@@ -27,9 +27,9 @@ Waves 0 and 1 landed. **1 of 40 subtopics is written** (Simple Interest, four
 rungs, all four admitted, all keys recomputed). Measured on 2026-10-02:
 
 ```
-.venv/bin/python -m pytest -q --strict-markers --cov      -> 161 passed
+.venv/bin/python -m pytest -q --strict-markers --cov      -> 198 passed
 .venv/bin/python -m coverage report --include="src/xat_practice/*.py" \
-    --fail-under=95 --precision=2                        -> TOTAL 95.19%
+    --fail-under=95 --precision=2                        -> TOTAL 96.64%
 .venv/bin/ruff check src tests                           -> All checks passed
 .venv/bin/mypy src                                       -> no issues, 9 files
 .venv/bin/xat-practice gates
@@ -37,11 +37,27 @@ rungs, all four admitted, all keys recomputed). Measured on 2026-10-02:
     admitted: 4   refused: 0  (rate 0.0 over 4)
 ```
 
+**That 96.64% is the second number this file has ever quoted for coverage, and
+the first was wrong.** It read `95.19%` and passed, because `cli.py` was absent
+from the report: 115 statements, 16% of the package, excluded because **no test
+had ever imported it**. Coverage only measures a module something executed, so a
+file nothing imports is invisible and an invisible file cannot drag a floor
+down. The package's real number was **86.13%**. The fix was 24 tests, not a
+rounder number — see `tests/test_cli.py`, which exists mostly so this cannot
+happen silently again.
+
 Not built, and not to be reported as if they were: any mock (28-question quant or
-75-question full paper), any timer, any result screen, negative marking in a
+75-question full paper), any timer, no marking screen, negative marking in a
 running product, `enumeration.py`, the blind second call, attempts 2–40. There is
 no percentile claim anywhere in this repository, because nothing has been sat
 long enough to earn one.
+
+**The page has now been rendered, not just read.** Until 2026-10-02 the lesson had
+never executed in a browser: `lesson.js` contained a syntax error, so the browser
+ran none of it and showed only the static HTML, and 161 tests passed throughout
+because every one of them asserted on the file's *text*. It is fixed, and
+`node --check` on the built file is now part of the suite. See `docs/DECISIONS.md`
+§6.0 — this is the most important entry in that section.
 
 ## Install on WSL
 
@@ -90,9 +106,21 @@ git clone git@github.com:03dipak/xat-practice.git     # SSH
 cd xat-practice
 
 uv python install 3.12
-uv venv --python 3.12
-uv pip install -e . mypy pytest pytest-cov ruff
+uv sync
 ```
+
+`uv sync` is the whole install. It reads `uv.lock`, so you get the exact versions
+the coverage figure in this file was measured on — `uv pip install -e . mypy
+pytest pytest-cov ruff` installs *unpinned* latest, so a fresh clone could get a
+different sympy and a different coverage number from the same code.
+
+> **`uv sync` PRUNES.** Anything in `.venv` that is not declared in
+> `pyproject.toml` is **removed**. MEASURED: before the dev group was declared,
+> `uv sync` deleted `mypy`, `pytest`, `pytest-cov` and `ruff` — the four tools
+> the gate commands run with — and the next import raised
+> `ModuleNotFoundError`. The tools now live in `[dependency-groups] dev`, so
+> `uv sync` is correct. If you add a tool, add it there too, or the next
+> `uv sync` will eat it.
 
 Verify:
 
@@ -106,9 +134,29 @@ year's topic rows sum to exactly 28 — the table is quotable only because it
 closes.
 
 > If `mypy` dies with `timeout: failed to execute process: No such file or
-> directory`, the venv is stale, not the package. `rm -rf .venv && uv venv
-> --python 3.12 && uv pip install -e . mypy pytest pytest-cov ruff`. Every
-> console script in `.venv/bin/` shebangs an absolute interpreter path.
+> directory`, the venv is stale, not the package. `rm -rf .venv && uv sync`.
+> Every console script in `.venv/bin/` shebangs an absolute interpreter path, so
+> a directory rename breaks all of them at once.
+
+### `uv run` vs `.venv/bin/...` — which to use when
+
+Both work. `uv run mypy src` takes **1.58s** against **0.36s** for
+`.venv/bin/mypy src` (MEASURED), and that is fine for day-to-day use.
+
+The gate commands use the direct path anyway, for one reason: **`uv run` is not
+read-only.** It resolves and syncs the environment *before* running the command,
+so it can create `uv.lock` and change what is installed as a side effect of
+asking for a type check. A gate is a *measurement*, and the measurement should
+not mutate the box it measures.
+
+| | use |
+|---|---|
+| `.venv/bin/mypy src` | the four gate commands, and any number you intend to quote |
+| `uv run mypy src` | scratch work, when you do not care what it syncs |
+
+Once `uv.lock` is committed the difference is much smaller, because `uv run` has
+nothing to re-resolve. The separation is kept anyway, because it is the
+difference between reading a measurement and making one.
 
 ## Run it
 
@@ -122,6 +170,18 @@ closes.
 `serve` binds **loopback only** and serves one directory. It exists for one
 reason: browsers block `fetch()` of a sibling JSON on `file://`, so opening
 `out/lesson-01/index.html` directly cannot load `paper.json`. Ctrl-C to stop.
+
+It is **threaded**, and that is not an optimisation. It used to be a
+single-connection `TCPServer`, which parked its only thread forever the first
+time a browser held a connection open — a favicon probe, a preconnect — and then
+served nothing at all, with no error and no exit. The symptom was a lesson page
+that "takes too much time to load"; the cause was the server, not the page. See
+`cli.make_server` and
+`test_one_held_connection_does_not_block_the_next_request`.
+
+If the page ever shows **"The question could not be loaded"** instead of a
+question, that is the fetch failing, and the card will tell you why — including
+the case where `index.html` was opened directly rather than served.
 
 Currently served: **Lesson 1, Simple Interest, 4 questions.** There is no
 Geometry lesson yet.
@@ -178,7 +238,7 @@ src/xat_practice/
   lesson1.py         Lesson 1: Simple Interest, 4 rungs
   bundle.py          static bundle + paper/key file split
   cli.py             8 verbs
-tests/               161 tests
+tests/               198 tests, 6 modules
 ```
 
 ## The exam this trains for

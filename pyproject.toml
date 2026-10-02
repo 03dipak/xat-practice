@@ -15,6 +15,24 @@ dependencies = [
 [project.scripts]
 xat-practice = "xat_practice.cli:main"
 
+# MEASURED 2026-10-02, and this is not a style preference. `uv sync` PRUNES: any
+# package in .venv that is not declared here is REMOVED. Before this group
+# existed, `uv sync` deleted mypy, pytest, pytest-cov and ruff -- the four tools
+# the gate commands are run with. Demonstrated in a scratch project:
+# `uv sync` printed `- requests==2.34.2` and the next import raised
+# ModuleNotFoundError. The README's `uv pip install` had been working only
+# because it bypasses pruning, which is luck, not a design.
+#
+# So the dev tools are DECLARED. `uv sync` is now the correct install, and
+# `uv run mypy src` is safe.
+[dependency-groups]
+dev = [
+    "mypy>=1.11",
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+]
+
 [build-system]
 requires = ["uv_build>=0.12.2,<0.13.0"]
 build-backend = "uv_build"

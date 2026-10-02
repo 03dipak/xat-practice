@@ -18,10 +18,14 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from . import build_opencode, bundle, gates, lesson1
 from .items import LESSON_SHAPE, LEVEL_RECIPES
 from .syllabus import Tier, by_tier, self_check, stratum_counts
+
+if TYPE_CHECKING:
+    import http.server
 
 
 def cmd_gates(_: argparse.Namespace) -> int:
@@ -135,32 +139,74 @@ def cmd_shapes(_: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_serve(args: argparse.Namespace) -> int:
-    """Serve the bundle over http.
+def make_server(root: Path, port: int) -> http.server.ThreadingHTTPServer:
+    """A static server for one directory, on loopback, that cannot be wedged.
 
-    A server is refused by D10 -- the bundle is static and `file://` works --
-    but `fetch()` of a sibling JSON is blocked by the browser's origin rules on
-    `file://`, so a one-shot static server is the honest way to sit a lesson.
-    It binds loopback only and serves one directory.
+    MEASURED 2026-10-02, from the owner's report that the page "takes too much
+    time to load". The assets were never the cause: lesson.js served in 1.4ms,
+    paper.json in 2.8ms, index.html in 4.8ms -- about 12ms for all four.
+
+    The cause was `socketserver.TCPServer`, which handles ONE connection at a
+    time. `SimpleHTTPRequestHandler` blocks reading a request until one arrives,
+    so a client that opens a socket and then holds it idle -- which a browser
+    does routinely, for favicon, preconnect or prefetch -- parks the only thread
+    forever and every subsequent request queues behind it. The server log showed
+    a browser session ending at 10:21:42 and then nothing being served at all;
+    a plain `curl` after that timed out at 5 seconds. The page had stopped
+    loading permanently, with no error and no exit.
+
+    Threading fixes the class of bug, and `daemon_threads` plus a handler
+    `timeout` stop an idle socket from pinning a worker either.
     """
     import functools
     import http.server
-    import socketserver
 
+    class _Handler(http.server.SimpleHTTPRequestHandler):
+        # An idle socket must not be able to hold a thread open forever.
+        timeout = 30
+
+        def end_headers(self) -> None:
+            # A learner must never run yesterday's script against today's
+            # lesson. `lesson.js` is a <script src>, so the browser is free to
+            # reuse a cached copy indefinitely -- and the symptom is a page that
+            # renders half of what is on disk, with no error anywhere.
+            self.send_header("Cache-Control", "no-store")
+            super().end_headers()
+
+    class _Server(http.server.ThreadingHTTPServer):
+        daemon_threads = True
+        allow_reuse_address = True
+
+    handler = functools.partial(_Handler, directory=str(root))
+    return _Server(("127.0.0.1", port), handler)
+
+
+def cmd_serve(args: argparse.Namespace) -> int:
+    """Serve the bundle over http.
+
+    A real server is forbidden by D10 -- the bundle is static and `file://` is
+    the normal way to read it -- but `fetch()` of a sibling JSON is blocked by
+    the browser's origin rules on `file://`, so a loopback static server is the
+    honest way to sit a lesson. It binds loopback only and serves one directory.
+
+    See `make_server` for why it is threaded. That function is not an
+    optimisation: the single-threaded version wedges permanently the first time
+    a browser holds a connection open, and the symptom is a page that never
+    loads and never errors.
+    """
     root = Path(args.lesson).resolve()
     if not (root / "index.html").exists():
         print(f"no index.html in {root}. Build it first: "
-              f"python -m xat_practice.bundle", file=sys.stderr)
+              f"xat-practice build", file=sys.stderr)
         return 1
-    handler = functools.partial(
-        http.server.SimpleHTTPRequestHandler, directory=str(root))
-    with socketserver.TCPServer(("127.0.0.1", args.port), handler) as httpd:
-        print(f"serving {root} at http://127.0.0.1:{args.port}/  "
-              f"(ctrl-c to stop)")
-        try:
-            httpd.serve_forever()
-        except KeyboardInterrupt:
-            print()
+    httpd = make_server(root, args.port)
+    print(f"serving {root} at http://127.0.0.1:{args.port}/  (ctrl-c to stop)")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print()
+    finally:
+        httpd.server_close()
     return 0
 
 

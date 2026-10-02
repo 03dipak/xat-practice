@@ -172,6 +172,46 @@ teach.
   on it passed, because each checked one property and none checked the fetch
   path. `paper.json` must be useless for grading, and `answerkey.json` is
   fetched inside `check()` only.
+- **An untested file cannot drag a floor down — it is INVISIBLE.** MEASURED:
+  the coverage floor read **95.19%** and passed for a whole session. `cli.py` was
+  absent from the report because **no test had ever imported it** (115 stmts,
+  16% of the package). The real number was **86.13%**. Coverage measures only
+  what something executed, so a module nothing imports cannot fail a gate it is
+  not in. When a new test imports a module, the denominator changes — re-read the
+  whole table, not the total.
+- **`serve` must stay `ThreadingHTTPServer`.** The single-connection
+  `TCPServer` wedged permanently the first time a browser held a connection open
+  (favicon probe). Symptom: the page "takes too much time to load"; the server
+  log then shows a browser session and **nothing served afterwards**. It looks
+  transient and it is permanent.
+- **`lesson.js` did not parse for the whole of Wave 1. 161 tests passed.** An
+  apostrophe in prose — `item's` — closed a JS string literal, so the browser ran
+  **none** of the file and the page showed only the static HTML. Every test
+  asserted on the file's TEXT; none asked whether it was valid JavaScript.
+  `node --check` on the built file and the node-free quote-parity test now gate
+  it. **A test that asserts a string has been shown a true statement and is
+  still untested** — `test_the_reveal_button_starts_disabled` asserted that
+  `…disabled = false` existed, which is the *enabling* line; driving the real
+  page showed the button was never disabled at all. **Render the artefact. A
+  static bundle's correctness is not a property of its text.** A headless
+  Chromium is at
+  `~/.cache/ms-playwright/chromium_headless_shell-*/chrome-linux/headless_shell`
+  and takes `--dump-dom` and `--screenshot`, which is how this was found.
+- **The commit barrier must be an ATTRIBUTE, not a statement.** `<button
+  id="reveal" disabled>` — a `.disabled = false` line cannot make a button start
+  disabled, and asserting that line exists proves nothing about the born state.
+- **`serve` sends `Cache-Control: no-store`.** `lesson.js` is a `<script src>`;
+  without it a learner can run yesterday's script against today's page, which
+  renders half of what is on disk with no error anywhere.
+- **Measure before believing "slow".** The owner's page was reported slow; every
+  asset was 1.4–4.8ms and the whole page was ~12ms. It was not slow, it was
+  absent, and one thing was lying. `docs/DECISIONS.md` §6 has all four defects.
+- **`uv sync` PRUNES.** It removes anything in `.venv` that is not declared in
+  `pyproject.toml`. Before `[dependency-groups] dev` existed it deleted mypy,
+  pytest, pytest-cov and ruff — the four tools the gates are run with. Declare
+  every tool there. `uv run` is fine for scratch and is not used for the gate
+  commands, because it resolves and syncs the environment *before* running, and a
+  measurement should not mutate the box it measures.
 - **Display strings are not arithmetic.** `Rs 200` and `2 : 3` do not parse as
   sympy, and `14,400` parses to the TUPLE `(14, 400)` rather than failing.
   `Item` carries `option_values` for the arithmetic and `G14` asserts the value

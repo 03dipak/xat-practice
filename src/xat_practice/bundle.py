@@ -75,7 +75,7 @@ HTML = """<!doctype html>
     width: 100%; padding: 11px 13px; border: 1px solid var(--line);
     border-radius: 8px; font: inherit; background: #fff;
   }
-  textarea { min-height: 76px; resize: vertical; }
+  textarea { min-height: 58px; resize: vertical; }
   button {
     font: inherit; font-weight: 600; padding: 11px 20px; border-radius: 8px;
     border: 1px solid var(--ink); background: var(--ink); color: #fff;
@@ -83,6 +83,21 @@ HTML = """<!doctype html>
   }
   button.ghost { background: #fff; color: var(--ink); }
   button:disabled { opacity: .4; cursor: not-allowed; }
+  /* MEASURED 2026-10-02: the owner's report was "the page takes too long and
+     the first screen is only the title". The server was NOT slow -- 1.4-4.8ms
+     per asset, ~12ms for all four. The cause was that `render()` awaited the
+     network BEFORE painting anything, so `#stage` was empty for the whole fetch
+     and PERMANENTLY empty if the fetch rejected, with nothing to tell the
+     learner why. Two fixes, both countable:
+       1. the card is painted synchronously, before any await; the stem swaps in
+          when the fetch lands;
+       2. a rejected fetch renders the REASON, including the file:// case,
+          instead of a blank page.
+     `.pending` and `.bad` exist only to make those two states visible. */
+  .pending { color: var(--muted); font-size: 15px; }
+  .bad { border-color: var(--bad); }
+  .bad h2 { font-size: 17px; margin: 0 0 8px; color: var(--bad); }
+  .bad code { display: inline-block; margin-top: 4px; }
   .opts { display: grid; gap: 8px; }
   .opt {
     display: flex; gap: 11px; align-items: flex-start; text-align: left;
@@ -118,8 +133,8 @@ HTML = """<!doctype html>
 <body>
 <main>
   <h1>Lesson 1 &middot; Simple Interest</h1>
-  <div class="sub">One subtopic, four levels. No clock, no negative marking &mdash;
-    nothing here is scored, everything here is meant to be understood.</div>
+  <div class="sub">One subtopic, four levels &mdash; foundation, easy, medium,
+    hard. Nothing here is scored; everything here is meant to be understood.</div>
   <div class="rungs" id="rungs"></div>
   <div id="stage"></div>
 </main>
@@ -140,12 +155,24 @@ const LABEL = {
   'L1-M': 'MEDIUM',   'L1-H': 'HARD',
 };
 const state = { i: 0, commit: null, pick: null, log: [] };
+let paperCache = null;
 
 // paper.json holds ONLY what the learner is allowed to see: the stem, the
 // options, and the derived level. It is safe to fetch on load.
+//
+// ONE FETCH FOR THE WHOLE LESSON. MEASURED: the first version re-fetched
+// paper.json on all four questions with `cache: 'no-store'`, so moving to the
+// next question blanked the stage and re-downloaded the file. Four questions,
+// four round trips, four flashes of empty page. The promise is cached instead,
+// so questions 2-4 resolve from memory.
 async function loadPaper(id) {
-  const r = await fetch('paper.json', { cache: 'no-store' });
-  const all = await r.json();
+  if (!paperCache) {
+    paperCache = fetch('paper.json', { cache: 'no-store' }).then(r => {
+      if (!r.ok) throw new Error('paper.json returned HTTP ' + r.status);
+      return r.json();
+    });
+  }
+  const all = await paperCache;
   return all.items.find(i => i.id === id);
 }
 
@@ -173,22 +200,58 @@ function esc(s) {
   return String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 }
 
+// A rejected fetch must SAY SO. The failure this replaces was silent: the
+// stage was written only after the await, so a fetch that never resolved left
+// the learner staring at the title and the subtitle with no question and no
+// clue. The most common cause is opening index.html directly -- browsers block
+// fetch() of a sibling file over file:// -- so that case is named.
+function fail(stage, id, err) {
+  const onFile = location.protocol === 'file:';
+  stage.innerHTML = `
+    <div class="card bad">
+      <h2>The question could not be loaded.</h2>
+      <p class="pending">${LABEL[id]} &middot; the paper file did not arrive.</p>
+      <p>${esc(onFile
+        ? 'This page is open over <code>file://</code>, and a browser refuses to '
+          + 'fetch a sibling JSON file from there. It is not a bug in the lesson.'
+        : 'The server did not return <code>paper.json</code>.')}</p>
+      <p class="pending">Reason: ${esc(err && err.message ? err.message : err)}</p>
+      <p class="pending">Fix: run <code>xat-practice build</code>, then
+        <code>xat-practice serve</code>, and open
+        <code>http://127.0.0.1:8000/</code>.</p>
+    </div>`;
+}
+
 async function render() {
   rungBar();
   const id = ORDER[state.i];
-  const meta = await loadPaper(id);
+  const stage = document.getElementById('stage');
+
+  // PAINTED FIRST, FETCHED SECOND. This assignment happens before any await, so
+  // the first screen is never empty and never mistaken for a broken page.
+  stage.innerHTML = `
+    <div class="card">
+      <div class="qno">${LABEL[id]} &middot; question ${state.i + 1} of 4</div>
+      <div class="stem pending">Loading the question&hellip;</div>
+    </div>`;
+
+  let meta;
+  try {
+    meta = await loadPaper(id);
+  } catch (err) {
+    fail(stage, id, err);
+    return;
+  }
   const a = 'ABCDE';
 
-  document.getElementById('stage').innerHTML = `
+  stage.innerHTML = `
     <div class="card">
       <div class="qno">${LABEL[id]} &middot; question ${state.i + 1} of 4</div>
       <div class="stem">${esc(meta.stem)}</div>
 
       <div id="commitBox">
         <p class="lbl"><strong>Write your answer before you see the options.</strong>
-          This is never marked and never leaves your machine. Answering first is
-          the only thing that makes the next four options a test rather than a
-          puzzle you solve by elimination.</p>
+          Never marked, never leaves your machine.</p>
         <textarea id="freeAnswer" placeholder="e.g. SI = P x R x T / 100 = ..."></textarea>
         <div class="quad" style="margin-top:12px">
           <div class="qcell" id="csure"><div class="t">I am sure</div>
@@ -196,7 +259,7 @@ async function render() {
           <div class="qcell" id="cunsure"><div class="t">I am unsure</div>
             <button class="ghost" data-conf="unsure">Unsure</button></div>
         </div>
-        <button id="reveal">Show the options</button>
+        <button id="reveal" disabled>Show the options</button>
         <div class="note" id="commitNote"></div>
       </div>
 
@@ -253,6 +316,12 @@ async function check() {
     : (right ? 'Unsure but right — a gap in disguise. You got lucky, not fluent.'
               : 'Unsure and wrong — normal, and the cheapest kind of miss.');
 
+  // MEASURED: `state.log` was declared and read by finish() but nothing ever
+  // pushed to it, so the finish screen reported a count that was always 0 and
+  // then never displayed it. The quadrant is the product's central claim
+  // (PEDAGOGY section 2), so the finish screen has to actually show it.
+  state.log.push({ id, level: LABEL[id], right, commit: state.commit, cell });
+
   document.getElementById('result').innerHTML = `
     <div class="verdict ${right ? 'ok' : 'no'}">
       ${right ? 'Correct.' : 'Not correct.'} The answer is ${a[meta.k]}.
@@ -273,18 +342,31 @@ function next() {
 }
 
 function finish() {
-  const done = state.log.filter(Boolean).length;
+  const rows = state.log.filter(Boolean);
+  const wasSure = rows.filter(r => r.commit === 'sure' && !r.right);
   document.getElementById('stage').innerHTML = `
     <div class="card">
       <div class="qno">Lesson complete</div>
       <div class="stem">You worked through Simple Interest at four levels.</div>
+      <div class="qcell on" style="margin-top:8px"><div class="t">Where you landed</div>
+        ${rows.length ? rows.map(r => `<div style="margin-top:6px">
+          <strong>${esc(r.level)}</strong> &middot;
+          <span style="color:var(--${r.right ? 'ok' : 'bad'})">${r.right ? 'right' : 'wrong'}</span>
+          &mdash; ${esc(r.cell)}</div>`).join('')
+          : '<div style="margin-top:6px">Nothing was recorded.</div>'}
+      </div>
       <p>The ladder is the point. The hard question's only extra step is the
       one the foundation question isolated &mdash; so if the last one felt
       arbitrary, the first one did not land, and redoing it is worth more than
       another hard question.</p>
       <p>Your strongest signal is not your score. It is
       <strong>the one you were <em>sure</em> about and got wrong</strong>:
-      that is a misconception with a name, and it is the one to fix tonight.</p>
+      that is a misconception with a name, and it is the one to fix tonight.
+      ${wasSure.length
+        ? `<strong>That is ${wasSure.map(r => r.level.toLowerCase()).join(' and ')}.</strong>`
+        : '<strong>You were not sure-and-wrong on any of the four</strong>'
+          + ' &mdash; so tonight the fix is retrieval, not a wrong idea.'}
+      </p>
     </div>`;
   rungBar();
 }
@@ -300,9 +382,9 @@ document.addEventListener('click', e => {
 });
 
 document.getElementById('foot').innerHTML =
-  'Every key in this lesson was <strong>recomputed from the item's own ' +
+  'Every key in this lesson was <strong>recomputed from the item\'s own ' +
   'derivation</strong> by exact arithmetic, and the answer is served only ' +
-  'after you commit. Difficulty was <strong>derived from each item's ' +
+  'after you commit. Difficulty was <strong>derived from each item\'s ' +
   'structure</strong>, not requested from a model &mdash; so the four levels ' +
   'are a measured property of these four questions.';
 

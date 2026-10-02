@@ -5,13 +5,14 @@ reason is a preference, and preferences rot. Reverse decisions by **superseding
 them** and saying so, never by editing them away — a doc that tracks its own
 history is the only way to tell a mistake from a change of mind.
 
-Status: **Waves 0 and 1 landed.** 161 tests, 95.19% coverage on
-`src/xat_practice/*.py`, ruff and mypy clean (mypy on 9 source files). **Re-measured
-2026-10-02.** The gates, the solver, the weight model, the derived-difficulty
-model, Lesson 1 and the static bundle all exist and are measured.
-`enumeration.py` and the blind second call are not built. **D3 and D4 accepted by
-the owner 2026-10-02**; D14 fixes the build order as lesson → mock → full, with
-Geometry first.
+Status: **Waves 0 and 1 landed.** 198 tests, **96.64%** coverage on
+`src/xat_practice/*.py` across all nine files, ruff and mypy clean (mypy on 9
+source files). **Re-measured 2026-10-02.** The gates, the solver, the weight
+model, the derived-difficulty model, Lesson 1 and the static bundle all exist and
+are measured. `enumeration.py` and the blind second call are not built. **D3 and
+D4 accepted by the owner 2026-10-02**; D14 fixes the build order as lesson →
+mock → full, with Geometry first; **D15** settles the rights posture as
+published.
 
 ---
 
@@ -429,3 +430,180 @@ Found by running, never by reading. Each is now a test with a falsifying input.
    `option_values`, which took down every LOGIC and JUDGEMENT item.
 
 A gate that raises has silently become a gate that is not run.
+
+---
+
+## 6. Found by the owner sitting the page
+
+**Five** defects, all reported by the owner on 2026-10-02 as "the page takes too much
+time to load, and the first screen is only the title". **None of them was a
+performance problem.** Every asset was measured first and every asset was fast:
+`lesson.js` 1.4ms, `paper.json` 2.8ms, `index.html` 4.8ms — about 12ms for the
+whole page. Chasing speed would have found nothing, because the page was never
+slow. It was *absent*, and one thing was *lying*, and one floor was *not counting
+what it claimed to count*.
+
+These are recorded with more detail than usual because the first instinct on all
+five was wrong, and "I measured and it was fine" is a conclusion that has to be
+earned here rather than assumed.
+
+### 6.0 The lesson page had never worked. Not once.
+
+**This is the finding that matters, and it is first because the other four are
+footnotes to it.**
+
+The owner sat the page and saw the title, the subtitle, and nothing else. That is
+the *static* HTML at `bundle.py:120-122` — the only markup that renders when no
+JavaScript executes.
+
+`lesson.js` did not parse. The footer contained:
+
+```js
+'after you commit. Difficulty was <strong>derived from each item's ' +
+```
+
+The apostrophe in **`item's`** terminates the JavaScript string literal. `node
+--check` on the served file: `SyntaxError: Unexpected identifier 's'`. The
+browser therefore refused to execute **a single line** of the file — not the
+rendering, not the fetch, not the commit barrier. Nothing. Ever.
+
+**And 161 tests passed the entire time.** Every one of them asserted on the
+*text* of the built files. Not one asked whether the file was valid JavaScript,
+and not one asked whether the page ran.
+
+How it was actually found: a headless Chromium was pointed at the served page and
+the DOM dumped after load. Rungs empty, stage empty, footer empty — all three
+elements that only `lesson.js` ever writes. Then `node --check`.
+
+The lesson has never been clicked by a human until now, and `AGENTS.md` already
+carried the reason it went undetected: **the bundle has been read, not clicked.**
+This is what that sentence was warning about, and the warning was written by a
+session that did not yet know how bad it was.
+
+Three checks now exist, and all three were verified to **fail on the
+reintroduced defect** before being accepted:
+
+| test | what it pins |
+|---|---|
+| `test_the_served_javascript_actually_parses` | `node --check` on the built file |
+| `test_js_strings_have_no_bare_apostrophe` | node-free: a line opening a `'…'` string must have an even count of unescaped quotes |
+| `test_the_bundle_checks_the_javascript_it_serves_before_serving_it` | the same rule against `bundle.JS` at build time, so the failure is a build error naming the line, not a silent page |
+
+**The general lesson, and it is the most transferable thing in this file:** a test
+that asserts a *string* has been shown a true statement and is still untested.
+`test_the_reveal_button_starts_disabled` asserted that the text
+`…disabled = false` existed in the file — that is the line that *enables* the
+button, and it proves nothing about the state the button is born in. Driving the
+real page found the button **was not disabled at all**: a learner could skip the
+commit, see the options, and never record a confidence. The commit barrier was
+opt-in. It is now `<button id="reveal" disabled>` and the test asserts the
+attribute.
+
+**So: what would have caught it, and it is not more reading.** Execute the
+artefact. A static bundle's correctness is not a property of its text.
+
+### 6.1 The server wedged permanently on one held connection
+
+`cmd_serve` used `socketserver.TCPServer`, which handles **one connection at a
+time**. `SimpleHTTPRequestHandler` blocks reading until a request arrives, so a
+client that opens a socket and then holds it idle parks the only thread forever.
+Browsers do this routinely — favicon probe, preconnect, prefetch.
+
+MEASURED: the server log recorded a real browser session that requested
+`/favicon.ico` at 10:21:42 and then **nothing was served at all**. A plain `curl`
+after that timed out at 5 seconds. The page had stopped loading permanently,
+with no error and no exit.
+
+This is the actual cause of the owner's report, and it is a *permanent* failure
+from a *transient* one: the server was fine when it started and dead minutes
+later, which is why "it worked when I first opened it" and "it never loads" are
+both true.
+
+Fix: `http.server.ThreadingHTTPServer`, plus `daemon_threads` and a handler
+`timeout` so an idle socket cannot pin a worker either.
+
+- `test_one_held_connection_does_not_block_the_next_request` opens a socket that
+  says nothing — the falsifying input, written first — and requires the next
+  request to succeed. Against the old server it **hangs for its full 5s timeout**,
+  which is the defect reproducing itself.
+- `test_the_server_is_threaded_not_single_connection` pins the mechanism, so the
+  property cannot be lost to a well-meaning revert.
+
+Verified live after the fix: three assets in **15ms while a socket was held
+idle**.
+
+### 6.2 `render()` painted nothing until the network answered
+
+`render()` did `const meta = await loadPaper(id)` **before** writing anything to
+`#stage`. So the stage was empty for the whole fetch, and **permanently empty if
+the fetch rejected** — with nothing on screen to say so. That is precisely what
+the owner described: the title, the subtitle, no question.
+
+Fix, in two parts:
+
+1. the card is painted **synchronously, before any await**, so the first screen is
+   never empty and never looks broken;
+2. a rejected fetch renders the **reason**, naming the `file://` case, because
+   opening `index.html` directly is the failure learners actually hit.
+
+Also fixed in the same pass: `loadPaper` re-fetched `paper.json` on all four
+questions with `cache: 'no-store'`, so every transition re-downloaded a 2KB file
+and flashed an empty page. The promise is cached; questions 2–4 now resolve from
+memory.
+
+Four new tests, each verified to **fail on the pre-fix code**:
+`test_the_first_screen_is_painted_before_the_network_answers`,
+`test_a_failed_paper_fetch_names_the_reason_instead_of_leaving_a_blank_page`,
+`test_moving_to_the_next_question_does_not_refetch_the_paper`, and
+`test_the_finish_screen_reports_the_quadrant_it_collected`.
+
+### 6.3 `state.log` was written to nowhere
+
+`finish()` read `state.log.filter(Boolean).length` and **nothing ever pushed to
+it**, so the count was always 0 — and then the finish screen never displayed it
+at all. The quadrant is the product's central claim (`PEDAGOGY.md` §2), and the
+screen meant to report it reported nothing. It now records each cell and names
+the sure-and-wrong rung when there is one.
+
+### 6.4 The coverage floor was not counting `cli.py`
+
+**This is the one that matters most, and it was in the number the README quoted.**
+
+The floor read **95.19%** and passed. The package's real number was **86.13%**.
+
+`cli.py` was **absent from the report entirely** — 115 statements, 16% of the
+package — because **no test had ever imported it**. Coverage only measures a
+module that something executed, so a file nothing imports is invisible, and an
+invisible file cannot drag a floor down. The moment one new test imported it, the
+table grew from 541 statements to 656 and the floor failed.
+
+It is the same failure as a stale `.coverage` file, wearing a different hat: **a
+count with no denominator is a lie that looks like a pass.** `95.19%` was true
+of eight files and was quoted as the truth about nine.
+
+The whole of the CLI had never been executed by the suite — all eight verbs. Fix:
+`tests/test_cli.py`, 24 tests, and **96.64%** across all nine files.
+
+The second reason those tests are worth having: **every verb prints a number a
+document quotes.** `weightage` prints the population, `ev` prints the three
+marking figures, `shapes` prints the quotas, `gates` prints a refusal rate with
+its denominator. `test_the_readme_quotes_the_population_this_cli_prints` and
+`test_the_decision_ledger_quotes_the_same_population` tie the two together, so
+the doc and the verb fail as one fact instead of quietly disagreeing.
+
+**MEASURED, and it belongs here:** this file, `AGENTS.md` and `task.txt` all
+quoted `95.19%` and the number of tests as `161` for a whole session after that
+number stopped being true of the package. Re-measuring is cheap. Assuming a
+previously measured number is still valid is how it stops being one.
+
+### 6.5 Two facts about the lesson page, for the record
+
+- The commit barrier survived all of this. `test_the_key_is_fetched_only_after_check`
+  asserts `await loadPaper(` is the only loader on the load path and that the
+  single `await loadKey(` sits inside `check()`. It was not weakened to
+  accommodate the caching fix, and the paper is still fetched **once** for the
+  whole lesson rather than four times.
+- `test_the_server_is_not_the_thing_that_is_slow` pins every served asset under
+  20KB. It is a guard, not a defect detector — it passes on both the broken and
+  the fixed version, and it is named as such rather than being allowed to look
+  like evidence.

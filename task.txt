@@ -64,10 +64,17 @@ recreated. **If you rename again, recreate the venv too:**
 
 Last COMPLETED full gate, at the new path, this session:
 
-    161 passed
-    95.19% coverage on src/xat_practice/*.py
+    198 passed
+    96.64% coverage on src/xat_practice/*.py, ALL NINE FILES
     ruff clean, mypy clean on 9 source files
-    CLI smoke-tested: gates, build, ev, levels, shapes, weightage
+    CLI smoke-tested AND unit-tested: gates, build, ev, levels, shapes,
+        weightage, agents, serve
+
+The coverage figure above is the SECOND one this file has quoted. The first,
+95.19%, was true of EIGHT files and was quoted as the truth about nine --
+`cli.py` was invisible because no test imported it. The package was really
+86.13%. `docs/DECISIONS.md` section 6.4 has the whole story. Read the printed
+TABLE, not the total.
 
 The four commands. ALL FOUR, not three:
 
@@ -90,9 +97,10 @@ looks like a measurement. Do not remove `--cov` to speed the suite up.
 
 `--precision=2` is load-bearing.
 
-**Coverage has almost no headroom: 95.19% against a 95% floor.** Adding source
-without adding tests will fail the fourth command. This is the thing most likely
-to surprise the next session.
+**Coverage headroom is thin: 96.64% against a 95% floor, 22 statements of slack.**
+Adding source without adding tests will fail the fourth command. But read the
+**printed table**, not the total -- that is how the floor passed at 95.19% for a
+session while measuring eight files out of nine. See DECISIONS.md section 6.4.
 
 
 ## 3. WHAT EXISTS, AND WHAT IT GUARANTEES
@@ -112,7 +120,7 @@ to surprise the next session.
       bundle.py               static bundle + paper/key file split
       build_opencode.py       single source of the shared 10.8 KB block
 cli.py                8 verbs
-    tests/                    5 modules, 161 tests
+    tests/                    6 modules, 198 tests
     out/lesson-01/            the built bundle (4 files)
 
 Lesson 1, all four ADMITTED, all keys RECOMPUTED (never asserted):

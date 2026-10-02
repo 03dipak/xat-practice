@@ -8,6 +8,8 @@ number the pedagogy in docs/ rests on.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from xat_practice import syllabus as S
@@ -332,3 +334,88 @@ def test_all_gates_get_refusal_counts_for_every_id():
     res = run([quant_item()])
     assert set(res.by_gate()) == set(GATE_IDS)
     assert res.refusal_rate == 0.0
+
+
+# ---------------------------------------------------------------------------
+# the static server cannot be wedged
+# ---------------------------------------------------------------------------
+# MEASURED 2026-10-02. The owner reported that the lesson page "takes too much
+# time to load". The assets were never the cause -- 1.4ms for lesson.js, 2.8ms
+# for paper.json, 4.8ms for index.html, ~12ms for all four, measured by fetch.
+#
+# The cause was `socketserver.TCPServer`, which serves ONE connection at a time.
+# A client that opens a socket and then holds it idle parks the only thread
+# forever. Browsers do this routinely -- the server log recorded a session that
+# requested /favicon.ico at 10:21:42 and then served nothing at all, and a
+# plain curl after that timed out. The page stopped loading permanently, with
+# no error and no exit.
+
+def _free_port() -> int:
+    import socket
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return int(s.getsockname()[1])
+
+
+def test_one_held_connection_does_not_block_the_next_request():
+    """The falsifying input, written first: a socket that connects and then says
+    NOTHING -- exactly what a browser preconnect or a favicon probe does.
+
+    Against `TCPServer` this hangs the server for good. It must return."""
+    import socket
+    import threading
+    import urllib.request
+
+    from xat_practice.cli import make_server
+
+    port = _free_port()
+    httpd = make_server(Path(__file__).resolve().parent.parent
+                        / "out" / "lesson-01", port)
+    t = threading.Thread(target=httpd.serve_forever, daemon=True)
+    t.start()
+    held = socket.create_connection(("127.0.0.1", port))
+    try:
+        # The wedging input: connected, silent, will never send a request.
+        assert held.fileno() >= 0
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/",
+                                    timeout=5) as r:
+            assert r.status == 200
+            assert b"<title>" in r.read()
+        # And the lesson's own assets still load.
+        for name in ("lesson.js", "paper.json"):
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/{name}",
+                                        timeout=5) as r:
+                assert r.status == 200
+                assert r.read()
+    finally:
+        held.close()
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_the_server_is_threaded_not_single_connection():
+    """Pins the mechanism, so the property cannot be lost to a well-meaning
+    revert to TCPServer. Threading is the fix; this says so explicitly."""
+    import http.server
+
+    from xat_practice.cli import make_server
+
+    httpd = make_server(Path("."), _free_port())
+    try:
+        assert isinstance(httpd, http.server.ThreadingHTTPServer)
+        assert httpd.daemon_threads is True
+    finally:
+        httpd.server_close()
+
+
+def test_serve_refuses_to_start_without_an_index_html(tmp_path, capsys):
+    """A server that starts on an empty directory serves a listing of nothing
+    and looks like a working lesson with no questions in it."""
+    from xat_practice.cli import main
+
+    rc = main(["serve", "--lesson", str(tmp_path), "--port", str(_free_port())])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "no index.html" in err
+    assert "xat-practice build" in err, "the error must say the command that fixes it"

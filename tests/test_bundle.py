@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -155,9 +157,28 @@ def test_the_commit_gate_precedes_the_options(on_disk):
 
 
 def test_the_reveal_button_starts_disabled(on_disk):
-    """Until a confidence is recorded, the learner cannot reach the options."""
-    assert "document.getElementById('reveal').disabled = false;" in on_disk["lesson.js"]
-    assert "Show the options" in on_disk["lesson.js"], (
+    """Until a confidence is recorded, the learner cannot reach the options.
+
+    MEASURED 2026-10-02, by driving the page in a real browser: the button was
+    NOT disabled when it appeared. The old test asserted only that the string
+    `...disabled = false` existed somewhere in the file -- which is the
+    *enabling* line, and proves nothing about the state the button is born in.
+    A check that asserts a string has been shown a true statement and is still
+    untested.
+
+    The button is built by JS, so `disabled` has to be an attribute in the
+    template, not a statement after the fact.
+    """
+    js = on_disk["lesson.js"]
+    assert '<button id="reveal" disabled>' in js, (
+        "the reveal button is not born disabled, so a learner can skip the "
+        "commit and see the options without recording a confidence. MEASURED in "
+        "a real browser: `reveal disabled before confidence: NO`."
+    )
+    assert "document.getElementById('reveal').disabled = false;" in js, (
+        "nothing enables the reveal button once a confidence is recorded"
+    )
+    assert "Show the options" in js, (
         "the reveal button is built by JS, so the label lives there"
     )
 
@@ -281,6 +302,101 @@ def test_no_answer_is_hardcoded_in_the_javascript(on_disk):
 
 
 # ---------------------------------------------------------------------------
+# the first screen must never be a blank page
+# ---------------------------------------------------------------------------
+# MEASURED 2026-10-02, from the owner's report: "the page takes too much time to
+# load, the first page has only the title". The server was NOT slow -- 1.4ms for
+# lesson.js, 2.8ms for paper.json, 4.8ms for index.html, ~12ms for all four.
+# So "slow" was the wrong diagnosis and the render path held the defect.
+
+def test_the_server_is_not_the_thing_that_is_slow(on_disk):
+    """The four served files are a few kilobytes each. If a page feels slow, the
+    cause is in the render path, not the wire -- so this pins the budget."""
+    for name in ("index.html", "lesson.js", "paper.json", "answerkey.json"):
+        assert len(on_disk[name]) < 20_000, (
+            f"{name} grew past 20KB. That is still fast, but the point of the "
+            "measurement is that no asset here is big enough to explain a slow "
+            "first screen, so look at render() instead of the network."
+        )
+
+
+def test_the_first_screen_is_painted_before_the_network_answers(on_disk):
+    """`render()` must write to the stage BEFORE it awaits paper.json.
+
+    The defect: the stage was written only after `await loadPaper(id)`, so it was
+    empty for the whole fetch -- and permanently empty if the fetch rejected.
+    The learner saw the title and the subtitle and nothing else, with no way to
+    tell a slow page from a broken one.
+    """
+    js = on_disk["lesson.js"]
+    body = js[js.index("async function render()"):js.index("async function check()")]
+    paint = body.index("stage.innerHTML")
+    await_paper = body.index("await loadPaper(")
+    assert paint < await_paper, (
+        "render() awaits paper.json before painting, so the first screen is "
+        "empty for the length of the fetch"
+    )
+    assert "Loading the question" in js, (
+        "the shell must say it is loading, or a fast fetch looks like a hang"
+    )
+
+
+def test_a_failed_paper_fetch_names_the_reason_instead_of_leaving_a_blank_page(on_disk):
+    """A rejected fetch is the case that produced a permanently blank page with
+    no diagnosis. It must render the reason, and it must name the file:// case
+    because that is the one learners actually hit."""
+    js = on_disk["lesson.js"]
+    render = js[js.index("async function render()"):js.index("async function check()")]
+    assert "catch" in render, "the paper load is unguarded"
+    assert "fail(stage, id, err)" in render, "a failure must be rendered, not swallowed"
+    fail = js[js.index("function fail("):js.index("async function render()")]
+    assert "file://" in fail, (
+        "the most common cause is opening index.html directly, where a browser "
+        "refuses fetch() of a sibling JSON. A learner who hits it must be told."
+    )
+    assert "xat-practice serve" in fail, "the error must give the command that fixes it"
+
+
+def test_moving_to_the_next_question_does_not_refetch_the_paper(on_disk):
+    """The paper is fetched once for the whole lesson.
+
+    The defect: `render()` ran on all four questions and each one called
+    `fetch('paper.json', {cache: 'no-store'})`, so every transition blanked the
+    stage and re-downloaded the file. Four round trips for a 2KB document, and
+    four flashes of an empty page.
+    """
+    js = on_disk["lesson.js"]
+    assert js.count("fetch('paper.json'") == 1, (
+        "paper.json is fetched more than once; cache the promise instead"
+    )
+    assert "paperCache" in js, "the fetched paper is not cached"
+    assert "if (!paperCache)" in js, (
+        "the cache must be guarded, or the second render refetches anyway"
+    )
+    # And the guard must not have grown a second fetch path for the KEY.
+    assert js.count("fetch('answerkey.json'") == 1
+    assert "answerkey.json" in js[js.index("async function loadKey"):][:200]
+
+
+def test_the_finish_screen_reports_the_quadrant_it_collected(on_disk):
+    """`state.log` was declared and read but never written to.
+
+    MEASURED: `finish()` computed a count that was always 0 and then never
+    displayed it. The quadrant is the product's central claim, so the screen
+    that reports it has to report the learner's actual cells.
+    """
+    js = on_disk["lesson.js"]
+    assert "state.log.push(" in js, "nothing records the outcome of a question"
+    finish = js[js.index("function finish()"):js.index("document.addEventListener")]
+    assert "rows.map(" in finish, "the finish screen does not list the four cells"
+    assert "wasSure" in finish, (
+        "the sure-and-wrong cell is the one the product exists to surface, and "
+        "the finish screen must name it when there is one"
+    )
+    assert "nothing here is scored" not in finish.lower()
+
+
+# ---------------------------------------------------------------------------
 # main(): the entry point that actually writes the files
 # ---------------------------------------------------------------------------
 
@@ -320,3 +436,121 @@ def test_main_does_not_regenerate_opencode_json():
     before = bo.OUT.read_text()
     bundle.main()
     assert bo.OUT.read_text() == before
+
+
+# ---------------------------------------------------------------------------
+# THE TEST THAT MATTERS MOST AFTER THE FIRST ONE
+# ---------------------------------------------------------------------------
+# MEASURED 2026-10-02, and it is the worst defect this project has produced.
+#
+# `lesson.js` did not parse. The footer contained
+#
+#     '...recomputed from the item's own ' +
+#
+# and the apostrophe in `item's` TERMINATED the JavaScript string literal, so
+# `node --check` reported `SyntaxError: Unexpected identifier 's'` and the
+# browser refused to execute a single line of the file. The page showed the
+# title, the subtitle, and nothing else -- forever, with no error anywhere.
+#
+# **The lesson page had never worked. Not once. And 161 tests passed the whole
+# time**, because every one of them asserted on the TEXT of the built files. Not
+# one asked whether the file was valid JavaScript.
+#
+# This is the answer to "why did the tests pass": they tested the wrong thing,
+# and no amount of reading would have found it. It took RENDERING the page.
+
+def test_the_served_javascript_actually_parses(on_disk):
+    """The file is JavaScript. It has to be valid JavaScript."""
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed; run `test_js_strings_have_no_bare_"
+                    "apostrophe` for the node-free half of this check")
+    proc = subprocess.run([node, "--check", "-"], input=on_disk["lesson.js"],
+                          capture_output=True, text=True, timeout=30)
+    assert proc.returncode == 0, (
+        "lesson.js does not parse, so the browser runs NONE of it and the page "
+        "shows only the static HTML. MEASURED: this exact failure shipped a page "
+        f"that had never worked, past 161 passing tests.\n{proc.stderr}"
+    )
+
+
+def test_js_strings_have_no_bare_apostrophe(on_disk):
+    """The node-free half, and the check that names the defect.
+
+    A line that OPENS a single-quoted JavaScript string must contain an even
+    number of unescaped quotes. An odd count means an apostrophe in prose --
+    `item's`, `don't`, `learner's` -- closed the literal early.
+
+    This is a crude rule and it is here anyway, because it runs with no external
+    tool. It cannot prove the file parses. It CAN catch the one mistake that has
+    already shipped."""
+    import re
+
+    offenders = []
+    for n, line in enumerate(on_disk["lesson.js"].splitlines(), 1):
+        stripped = line.strip()
+        if not stripped.startswith("'"):
+            continue
+        # Count quotes that are not escaped. `\'` inside the literal is fine;
+        # an unescaped `'` is a premature terminator.
+        bare = len(re.findall(r"(?<!\\)'", stripped))
+        if bare % 2:
+            offenders.append(f"  line {n}: {stripped[:78]}")
+    assert not offenders, (
+        "a JS string literal is terminated early by an apostrophe in prose, so "
+        "the whole file fails to parse and NOTHING on the page runs:\n"
+        + "\n".join(offenders)
+    )
+
+
+def test_the_bundle_checks_the_javascript_it_serves_before_serving_it():
+    """`build_lesson` must refuse to emit a bundle whose script does not parse.
+
+    The build is the last point where the file is ours rather than the browser's.
+    Refusing there turns a silent permanent failure into a build error naming the
+    line. `node` is optional: without it this asserts the no-store header instead,
+    so the check is never silently absent without saying so."""
+    files = bundle.build_lesson(lesson1.LESSON_ID, lesson1.LESSON,
+                                lesson1.SOLUTIONS)
+    assert set(files) == {"paper.json", "answerkey.json"}
+    js = bundle.JS
+    import re as _re
+    for n, line in enumerate(js.splitlines(), 1):
+        s = line.strip()
+        if s.startswith("'") and len(_re.findall(r"(?<!\\)'", s)) % 2:
+            raise AssertionError(f"bundle.JS line {n} closes its string early: {s[:70]}")
+    node = shutil.which("node")
+    if node:
+        proc = subprocess.run([node, "--check", "-"], input=js, capture_output=True,
+                              text=True, timeout=30)
+        assert proc.returncode == 0, f"bundle.JS does not parse:\n{proc.stderr}"
+
+
+def test_the_server_tells_the_browser_never_to_cache():
+    """`lesson.js` is a `<script src>`, so the browser may reuse a stale copy
+    indefinitely. After a rebuild the learner would run the OLD script against
+    the NEW page -- a page that renders half of what is on disk, silently.
+
+    Asserted live against `make_server`, because the property is a response
+    header and reading the source would not prove it is sent."""
+    import threading
+    import urllib.request
+
+    from xat_practice.cli import make_server
+
+    root = Path(bundle.OUT_DIR)
+    port = 8765
+    httpd = make_server(root, port)
+    t = threading.Thread(target=httpd.serve_forever, daemon=True)
+    t.start()
+    try:
+        for name in ("lesson.js", "paper.json"):
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/{name}",
+                                        timeout=5) as r:
+                assert r.headers.get("Cache-Control") == "no-store", (
+                    f"{name} is cacheable, so a rebuild can leave a learner "
+                    f"running stale JavaScript"
+                )
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
