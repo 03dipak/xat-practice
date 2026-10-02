@@ -36,13 +36,16 @@ from .items import Item
 
 OUT_DIR = Path(__file__).resolve().parent.parent.parent / "out" / "lesson-01"
 
-HTML = """<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>XAT Practise &middot; Lesson 1 &middot; Simple Interest</title>
-<style>
+# The stylesheet is its OWN FILE, and that is load-bearing rather than tidy.
+#
+# MEASURED 2026-10-02: with the CSS inline in index.html the UI probe could
+# not load it, so it was blind to every appearance defect. The worst one:
+# `.opt` overrode `background` but not `colour`, so all five options rendered
+# WHITE ON WHITE -- and the probe's own contrast check PASSED against the
+# broken build, because with no stylesheet the buttons were default grey and
+# perfectly readable. A check that cannot see the styling cannot catch a
+# styling bug. Both the page and the probe now load the same file.
+STYLE = """\
   :root {
     --ink: #14181f; --muted: #5b6673; --line: #d9dee5; --bg: #f7f8fa;
     --ok: #0f7b46; --bad: #b3261e; --key: #1b4dd8;
@@ -103,6 +106,20 @@ HTML = """<!doctype html>
     display: flex; gap: 11px; align-items: flex-start; text-align: left;
     padding: 13px 15px; border: 1px solid var(--line); border-radius: 9px;
     background: #fff; cursor: pointer; font: inherit; width: 100%; margin: 0;
+    /* MEASURED 2026-10-02, from the owner's report "not able to see any option
+       or values". The generic `button` rule above sets `color: #fff` for the dark
+       primary button. `.opt` overrode `background` but NOT `color`, so every
+       option -- the letter badge AND the value -- rendered WHITE ON WHITE. All
+       five rows were on screen, correct in the DOM, and completely illegible.
+
+       The owner saw the markup in devtools, which is exactly what a
+       white-on-white failure looks like from the DOM side: the nodes are all
+       there. And 35 UI checks passed, because every one of them asserted that
+       an element EXISTED. Not one asked whether it could be read.
+
+       `.opt` now sets its own colour explicitly. Do not remove it.
+    */
+    color: var(--ink);
   }
   .opt:hover { border-color: var(--ink); }
   .opt.sel { border-color: var(--ink); background: #f2f4f7; }
@@ -128,7 +145,15 @@ HTML = """<!doctype html>
           color: var(--muted); }
   code { background: #eef1f4; padding: 1px 5px; border-radius: 4px;
          font-size: 13px; }
-</style>
+"""
+
+HTML = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XAT Practise &middot; Lesson 1 &middot; Simple Interest</title>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 <main>
@@ -164,7 +189,7 @@ const LABEL = {
   'L1-F': 'FOUNDATION', 'L1-E': 'EASY',
   'L1-M': 'MEDIUM',   'L1-H': 'HARD',
 };
-const state = { i: 0, commit: null, pick: null, meta: null, log: [] };
+const state = { i: 0, commit: null, pick: null, meta: null, build: null, log: [] };
 let paperCache = null;
 
 // paper.json holds ONLY what the learner is allowed to see: the stem, the
@@ -183,6 +208,7 @@ async function loadPaper(id) {
     });
   }
   const all = await paperCache;
+  state.build = all.build || 'unknown';
   return all.items.find(i => i.id === id);
 }
 
@@ -253,6 +279,17 @@ async function render() {
     return;
   }
   state.meta = meta;
+
+  // SHOW THE BUILD. If the screen says a build that is not the current one, the
+  // browser is running a stale script and nothing below can be trusted.
+  const foot = document.getElementById('foot');
+  if (foot) foot.innerHTML =
+    'Build <strong>' + esc(String(state.build)) + '</strong> &middot; every key in '
+    + 'this lesson was <strong>recomputed from the item\'s own derivation</strong> '
+    + 'by exact arithmetic, and the answer is served only after you commit. '
+    + 'Difficulty was <strong>derived from each item\'s structure</strong>, not '
+    + 'requested from a model &mdash; so the four levels are a measured property '
+    + 'of these four questions.';
 
   stage.innerHTML = `
     <div class="card">
@@ -414,6 +451,25 @@ render();
 """
 
 
+def build_id(payload: dict[str, object]) -> str:
+    """A short, DETERMINISTIC stamp of the content it describes.
+
+    MEASURED 2026-10-02, from an owner report of the options being invisible.
+    The served page was correct -- proven by screenshot -- so the browser was
+    running an older copy, and nothing on the screen could tell. A learner (or a
+    reviewer) had no way to know which build they were looking at.
+
+    So the build now SAYS which build it is. Derived from the content rather than
+    the clock, so two builds of the same lesson produce the same id and
+    `git diff` on out/ stays meaningful. `test_the_build_id_changes_when_the_
+    lesson_changes` pins that."""
+    import hashlib
+    import json as _json
+
+    blob = _json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(blob.encode()).hexdigest()[:8]
+
+
 def build_lesson(lesson_id: str, items: tuple[Item, ...],
                  solutions: dict[str, tuple[str, ...]]) -> dict[str, object]:
     """Gate the lesson, then emit the two halves of the bundle.
@@ -478,6 +534,8 @@ def build_lesson(lesson_id: str, items: tuple[Item, ...],
             for it in items
         },
     }
+    paper["build"] = build_id(paper)
+    key["build"] = paper["build"]
     return {"paper.json": paper, "answerkey.json": key}
 
 
@@ -486,6 +544,7 @@ def main() -> None:
     files = build_lesson(lesson1.LESSON_ID, lesson1.LESSON, lesson1.SOLUTIONS)
     (OUT_DIR / "index.html").write_text(HTML)
     (OUT_DIR / "lesson.js").write_text(JS)
+    (OUT_DIR / "style.css").write_text(STYLE)
     for name, payload in files.items():
         (OUT_DIR / name).write_text(json.dumps(payload, indent=2) + "\n")
 

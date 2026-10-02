@@ -212,6 +212,16 @@ teach.
   coverage floor reading eight files out of nine, and
   `test_the_reveal_button_starts_disabled` asserting an *enabling* line. A check
   that cannot execute must not be able to return success.
+- **The CSS is a separate file and must stay one.** MEASURED 2026-10-02: with the
+  styles inline in `index.html`, `.opt` set `background` but not `color`, so the
+  generic `button { color: #fff }` rule won and **all five options rendered white
+  on white**. The nodes were in the DOM — devtools showed the markup perfectly
+  while the screen showed nothing — and **38 UI checks passed**, because every one
+  asserted that an element *existed*. Worse, the probe loaded no stylesheet at
+  all, so its own contrast check passed too: it was measuring a page that does
+  not exist. `style.css` is loaded by both the page and `tools/ui_probe.html`,
+  and `every-option-is-legible-contrast-at-least-4-5-1` now catches it. **An
+  element that is present and illegible passes every DOM assertion there is.**
 - **`lesson.js` is wrapped in an IIFE. Keep it that way.** `check`, `state`,
   `ORDER` and `render` were global, and a probe's own `check()` silently replaced
   `lesson.js`'s — the page stopped working with no error. `ui_probe.py` is the

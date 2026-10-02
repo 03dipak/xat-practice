@@ -344,7 +344,8 @@ def test_no_answer_is_hardcoded_in_the_javascript(on_disk):
 def test_the_server_is_not_the_thing_that_is_slow(on_disk):
     """The four served files are a few kilobytes each. If a page feels slow, the
     cause is in the render path, not the wire -- so this pins the budget."""
-    for name in ("index.html", "lesson.js", "paper.json", "answerkey.json"):
+    for name in ("index.html", "style.css", "lesson.js", "paper.json",
+                 "answerkey.json"):
         assert len(on_disk[name]) < 20_000, (
             f"{name} grew past 20KB. That is still fast, but the point of the "
             "measurement is that no asset here is big enough to explain a slow "
@@ -432,14 +433,15 @@ def test_the_finish_screen_reports_the_quadrant_it_collected(on_disk):
 # main(): the entry point that actually writes the files
 # ---------------------------------------------------------------------------
 
-def test_main_writes_all_four_files_and_reports_the_ladder(capsys):
+def test_main_writes_all_five_files_and_reports_the_ladder(capsys):
     """`main()` is what a session runs to produce a lesson, so it is the one
     function whose failure is silent -- the tests above call `build_lesson`
     directly and never touch the filesystem."""
     bundle.main()
     out = capsys.readouterr().out
 
-    for name in ("index.html", "lesson.js", "paper.json", "answerkey.json"):
+    for name in ("index.html", "style.css", "lesson.js", "paper.json",
+                 "answerkey.json"):
         assert (OUT / name).exists(), name
         assert (OUT / name).stat().st_size > 0, name
 
@@ -586,3 +588,77 @@ def test_the_server_tells_the_browser_never_to_cache():
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+def test_the_build_id_changes_when_the_lesson_changes():
+    """The build id is what makes a stale script self-evident.
+
+    MEASURED 2026-10-02: the owner reported the options were invisible, the
+    served page was provably correct, and nothing on screen could say which build
+    was running. A stamp that does not change when the content changes is
+    decoration."""
+    import dataclasses
+
+    from xat_practice import bundle as b
+
+    first = b.build_lesson(lesson1.LESSON_ID, lesson1.LESSON, lesson1.SOLUTIONS)
+    again = b.build_lesson(lesson1.LESSON_ID, lesson1.LESSON, lesson1.SOLUTIONS)
+    assert first["paper.json"]["build"] == again["paper.json"]["build"], (
+        "the build id must be derived from the content, not the clock, or "
+        "two builds of the same lesson differ and git diff on out/ is noise"
+    )
+    changed = list(lesson1.LESSON)
+    changed[0] = dataclasses.replace(changed[0], stem=changed[0].stem + " ")
+    second = b.build_lesson(lesson1.LESSON_ID, tuple(changed), lesson1.SOLUTIONS)
+    assert second["paper.json"]["build"] != first["paper.json"]["build"], (
+        "the build id did not change when the stem changed, so it cannot detect "
+        "a stale script"
+    )
+    assert first["answerkey.json"]["build"] == first["paper.json"]["build"], (
+        "the two halves of the bundle must carry the same id"
+    )
+
+
+def test_the_footer_shows_the_build_and_still_states_the_guarantees(on_disk):
+    """The two guarantees AND the build stamp. Losing either is a regression:
+    the guarantees are the product's claim, and the stamp is how a stale page
+    is caught."""
+    js = on_disk["lesson.js"]
+    assert "state.build" in js
+    assert "'Build <strong>'" in js
+    assert "recomputed from the item" in js
+    assert "derived from each item" in js
+
+
+def test_the_stylesheet_is_a_separate_file_and_the_page_links_it():
+    """The CSS is its own file because the UI probe has to load it.
+
+    MEASURED 2026-10-02: with the styles inline in index.html the probe could not
+    load them, so it was blind to every appearance defect -- and its own contrast
+    check PASSED against a build where all five options were white on white. A
+    check that cannot see the styling cannot catch a styling bug."""
+    assert '<link rel="stylesheet" href="style.css">' in bundle.HTML
+    assert "<style>" not in bundle.HTML, (
+        "the styles are inline again, so the probe cannot load them"
+    )
+    assert bundle.STYLE.strip(), "the stylesheet is empty"
+    assert (OUT / "style.css").exists(), "style.css was not written"
+
+
+def test_options_set_their_own_colour_and_do_not_inherit_white():
+    """`.opt` overrode `background` but not `colour`, so the generic
+    `button { color: #fff }` rule won and all five options rendered WHITE ON
+    WHITE. The elements were in the DOM, which is why devtools showed the markup
+    perfectly while the screen showed nothing.
+
+    Asserted here as well as in the probe: the probe proves the rendered contrast,
+    this pins the cause, so a future edit that drops the line says why."""
+    opt = re.search(r"\.opt \{(.*?)\n  \}", bundle.STYLE, re.S)
+    assert opt, "the .opt rule is gone"
+    body = opt.group(1)
+    assert "color:" in body, (
+        ".opt sets background but not colour, so it inherits color:#fff from the "
+        "generic button rule and renders white on white. MEASURED: all five "
+        "options were invisible and 38 UI checks passed."
+    )
+    assert "background: #fff" in body, "the fix assumes a white option background"

@@ -17,7 +17,7 @@ static string assertions, and a script that threw ReferenceError before measurin
 once had a green suite. This executes the real script."
 
     .venv/bin/python tools/ui_probe.py              # check, exit 1 on any failure
-    .venv/bin/python tools/ui_probe.py --shot PATH  # also write a screenshot
+    .venv/bin/python tools/ui_probe.py --shot-dir DIR  # PNGs of each stage
     .venv/bin/python tools/ui_probe.py --keep       # leave the temp dir behind
 
 Exit codes: 0 every check passed. 1 a check failed. 2 no usable browser, so
@@ -33,6 +33,7 @@ import json
 import re
 import shutil
 import socket
+import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -74,7 +75,8 @@ def stage(tmp: Path, expected: dict[str, int]) -> Path:
     The expected keys come from `answerkey.json`, i.e. from the keys the SOLVER
     recomputed. Injecting them is what lets the probe assert that the browser's
     own verdict agrees with the solver rather than with itself."""
-    for name in ("index.html", "lesson.js", "paper.json", "answerkey.json"):
+    for name in ("index.html", "lesson.js", "paper.json", "answerkey.json",
+                 "style.css"):
         shutil.copy(BUNDLE / name, tmp / name)
     key = json.loads((BUNDLE / "answerkey.json").read_text())["items"]
     expected = {i: key[i]["k"] for i in key}
@@ -89,14 +91,91 @@ def stage(tmp: Path, expected: dict[str, int]) -> Path:
     return tmp
 
 
+def shot_pages(tmp: Path, browser: str, out_dir: Path, port: int,
+               timeout: int) -> list[str]:
+    """Photograph the REAL page at each stage, with the real stylesheet.
+
+    The probe page carries no CSS, so its screenshots are unstyled text -- a fine
+    DOM and a useless visual record. `index.html` has the CSS but cannot be
+    photographed mid-flow, because nothing clicks for it.
+
+    So each stage gets a copy of the real `index.html` with a small driver
+    appended. The driver only ever CLICKS -- it never reaches into `lesson.js`,
+    which is inside an IIFE and deliberately has no public surface. That is the
+    point: the photograph is taken along the path a learner's mouse takes.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    drivers = {
+        "start": "/* nothing: the first screen as it loads */",
+        "options": """
+      await waitForEl(() => document.querySelector('.stem') &&
+        !document.querySelector('.stem').classList.contains('pending'));
+      document.querySelector('[data-conf="sure"]').click();
+      document.getElementById('reveal').click();
+""",
+        "result": """
+      await waitForEl(() => document.querySelector('.stem') &&
+        !document.querySelector('.stem').classList.contains('pending'));
+      document.querySelector('[data-conf="sure"]').click();
+      document.getElementById('reveal').click();
+      await waitForEl(() => document.querySelectorAll('.opt').length === 5);
+      document.querySelectorAll('.opt')[1].click();
+      document.getElementById('check').click();
+      await waitForEl(() => document.querySelector('.verdict'));
+""",
+    }
+    preamble = """
+<script>
+async function waitForEl(fn, ms) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < (ms || 8000)) {
+    if (fn()) return true;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return false;
+}
+(async () => {
+"""
+    written: list[str] = []
+    for stage, body in drivers.items():
+        html = (tmp / "index.html").read_text()
+        if stage != "start":
+            html = html.replace(
+                "</body>",
+                preamble + body + "})();\n</script>\n</body>", 1)
+        page = f"_shot_{stage}.html"
+        (tmp / page).write_text(html)
+        png = out_dir / f"{stage}.png"
+        port_note = ""
+        try:
+            subprocess.run(
+                [browser, "--no-sandbox", "--disable-gpu", "--hide-scrollbars",
+                 "--window-size=900,1000", "--virtual-time-budget=9000",
+                 f"--screenshot={png}",
+                 # http, NOT file://. MEASURED: the first attempt built the URL
+                 # from tmp.as_uri(), and the page then failed to load at all --
+                 # a browser refuses fetch() of a sibling JSON over file://, so
+                 # every shot was of the error card.
+                 f"http://127.0.0.1:{port}/{page}"],
+                capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            port_note = f" {stage}: TIMED OUT"
+        if png.exists():
+            written.append(str(png))
+        else:
+            written.append(f"{png} NOT WRITTEN{port_note}")
+    return written
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--shot", help="also write a PNG of the first screen here")
+    ap.add_argument("--shot-dir", help="write start/options/result PNGs here")
     ap.add_argument("--keep", action="store_true", help="leave the temp dir")
     ap.add_argument("--timeout", type=int, default=60)
     args = ap.parse_args(argv)
 
-    for required in (PROBE, BUNDLE / "lesson.js", BUNDLE / "answerkey.json"):
+    for required in (PROBE, BUNDLE / "lesson.js", BUNDLE / "answerkey.json",
+                     BUNDLE / "style.css"):
         if not required.exists():
             # The path is printed absolute on purpose. MEASURED: this printed
             # `required.relative_to(ROOT)`, which raises ValueError when the
@@ -125,14 +204,23 @@ def main(argv: list[str] | None = None) -> int:
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
 
-    import subprocess
-
-    url = f"http://127.0.0.1:{port}/ui_probe.html"
+    base = f"http://127.0.0.1:{port}"
     cmd = [browser, "--no-sandbox", "--disable-gpu", "--hide-scrollbars",
-           "--virtual-time-budget=15000", "--dump-dom", url]
-    if args.shot:
-        cmd.insert(-1, f"--screenshot={args.shot}")
-        cmd.insert(-1, "--window-size=900,760")
+           "--virtual-time-budget=15000", "--dump-dom", f"{base}/ui_probe.html"]
+
+    shot_note = ""
+    shots: list[str] = []
+    if args.shot_dir:
+        # Taken BEFORE the server goes down, because the shot pages have to be
+        # served over loopback.
+        try:
+            shots = shot_pages(tmp, browser, Path(args.shot_dir), port,
+                               args.timeout)
+        except Exception as exc:  # a screenshot failure must not hide the checks
+            shot_note = f"SCREENSHOTS FAILED: {exc!r}"
+        else:
+            shot_note = ("screenshots: " + ", ".join(shots)
+                         + "  (real index.html + real CSS, driven by clicking)")
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True,
                               timeout=args.timeout)
@@ -195,8 +283,8 @@ def main(argv: list[str] | None = None) -> int:
     if payload.get("done") != "done":
         print("  the probe did not run to completion, so the checks after the "
               "failure point were never evaluated", file=sys.stderr)
-    if args.shot:
-        print(f"screenshot: {args.shot}")
+    if shot_note:
+        print(shot_note)
     return 1 if (failed or malformed or payload.get("done") != "done") else 0
 
 

@@ -680,3 +680,56 @@ implemented correctly is `tester`. It renders, and hands off.
 `test_ui_inspector_carries_the_defects_it_must_not_reintroduce` fails if
 `item's`, "Hidden is not absent", `window` or "recomputed key" are dropped from
 the prompt.
+
+### 6.8 White on white: 38 UI checks passed while the page was unusable
+
+**The owner reported "not able to see any option or values", and pasted the DOM
+they could see.** Five option rows existed, with the right letters and the right
+values. None of them was legible.
+
+`.opt` set `background: #fff` but did not set `color`, so the generic
+`button { color: #fff }` rule — the one that makes the primary button dark —
+won. **White text on a white background, five times, plus five letter badges.**
+Every node was present, which is exactly why devtools showed the markup
+perfectly while the screen showed nothing. This is what a white-on-white failure
+looks like from the DOM side.
+
+**38 UI checks passed against it.** Every one of them asserted that an element
+existed, had the right text, had the right classes, was clickable. Not one asked
+whether a human could read it. *An element that is present and illegible passes
+every DOM assertion there is.*
+
+And the first contrast check written for it **also passed on the broken build** —
+1 pixel of which was because the probe page loaded **no stylesheet at all**. With
+no CSS the buttons were default grey and perfectly readable, so the probe was
+measuring a page that does not exist.
+
+So the stylesheet became its own file, `style.css`, loaded by both the page and
+the probe. MEASURED on the reintroduced defect, the check then reports exactly
+what was wrong:
+
+```
+FAIL  every-option-is-legible-contrast-at-least-4-5-1
+      option A contrast 1.00:1 (rgb(255, 255, 255) on rgb(255, 255, 255))
+      badge A contrast 1.00:1  ... through option E and badge E
+```
+
+Three checks now, because each catches something the others cannot:
+
+| check | what it catches |
+|---|---|
+| `every-option-is-legible-contrast-at-least-4-5-1` | white on white, and any future contrast failure |
+| `every-option-shows-its-letter-and-its-value` | an option that renders but has no text |
+| `every-option-has-a-clickable-height` | a collapsed or zero-height row |
+
+**The general lesson, and it is the second time this session.** §6.0 was "the
+text was never valid JavaScript". §6.8 is "the text was valid, the DOM was
+correct, the behaviour was correct, and the page was unusable." **Correctness
+has three layers and this project had only ever checked two:** the data, and then
+the DOM. The layer in between — *what it looks like* — was unmeasured from the
+start, and both defects were in it.
+
+The screenshots were the only reason either was found. `test_the_probe_page_...`
+now requires `--shot-dir`, and every stage is photographed from the real page
+with the real stylesheet, because the probe page's own screenshot came back as
+unstyled text: a fine DOM and a useless visual record.

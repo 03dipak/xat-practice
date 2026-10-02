@@ -27,7 +27,7 @@ Waves 0 and 1 landed. **1 of 40 subtopics is written** (Simple Interest, four
 rungs, all four admitted, all keys recomputed). Measured on 2026-10-02:
 
 ```
-.venv/bin/python -m pytest -q --strict-markers --cov      -> 212 passed
+.venv/bin/python -m pytest -q --strict-markers --cov      -> 216 passed
 .venv/bin/python -m coverage report --include="src/xat_practice/*.py" \
     --fail-under=95 --precision=2                        -> TOTAL 96.64%
 .venv/bin/ruff check src tests                           -> All checks passed
@@ -205,9 +205,14 @@ Geometry lesson yet.
 
 ```bash
 .venv/bin/xat-practice build
-.venv/bin/python tools/ui_probe.py                 # one line per check, exit 1 on failure
-.venv/bin/python tools/ui_probe.py --shot /tmp/ui.png
+.venv/bin/python tools/ui_probe.py                    # 38 checks, exit 1 on failure
+.venv/bin/python tools/ui_probe.py --shot-dir /tmp/ui # start/options/result PNGs
 ```
+
+The PNGs are the **real** `index.html` with the **real** stylesheet, driven by
+clicking — not the probe page. That is deliberate: with the CSS inline, the probe
+could not load it, was blind to every appearance defect, and its own contrast
+check passed against a build where all five options were white on white.
 
 This serves the built bundle through the real threaded server, drives it in a
 headless Chromium, and asserts on the DOM the browser actually built — 34 checks,
@@ -221,6 +226,8 @@ including:
 | `answerkey-not-fetched-before-check` | the key is unreachable before the learner commits |
 | `the-browser-verdict-matches-the-recomputed-key` | the screen agrees with the key `Solver.verify` computed |
 | `the-solution-ends-on-the-stated-answer` | the step-by-step ends on the key |
+| `every-option-is-legible-contrast-at-least-4-5-1` | **readable**, not merely present — this caught the options rendering white on white |
+| `the-page-states-which-build-it-is` | the build id, so a stale script is self-evident |
 | `lesson-js-leaks-no-globals` | twelve internals stay off `window` |
 
 Exit **2** means no browser was found and therefore nothing was proven — never
@@ -267,7 +274,7 @@ src/xat_practice/
   lesson1.py         Lesson 1: Simple Interest, 4 rungs
   bundle.py          static bundle + paper/key file split
   cli.py             8 verbs
-tests/               212 tests, 7 modules
+tests/               216 tests, 7 modules
 tools/
   ui_probe.html       the probe page a browser actually runs
   ui_probe.py         serves the bundle, drives Chromium, reports
