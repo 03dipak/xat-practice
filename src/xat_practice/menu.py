@@ -147,7 +147,7 @@ def paper_shape_lines(exam_id: str = "xat") -> list[str]:
     # penalised on its own -- the exact error corrected in docs/LLD.md §3.3.
     for pid in exam.parts:
         part = part_of_id(exam.exam_id, pid)
-        names = " ".join(SECTIONS[f"{exam.exam_id}:{s}"].name for s in part.sections)
+        names = ", ".join(SECTIONS[f"{exam.exam_id}:{s}"].name for s in part.sections)
         clock = f"{part.minutes} min" if part.minutes else "no time limit"
         rule = ""
         if part.blank_penalty_after:
