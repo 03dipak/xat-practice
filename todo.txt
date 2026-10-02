@@ -13,7 +13,11 @@ Read order for a cold start:
 3. `docs/DECISIONS.md` — the ruling ledger, D1..D26
 4. `docs/ADOPT_REJECT.md` — what five reviews said, and what was done about it
 5. `docs/LLD.md` — the Exam -> Part -> Section -> Topic design and its phases
-6. `docs/COVERAGE.md` — GENERATED. Do not hand-edit; re-run `uv run xat-practice coverage`
+6. `docs/TASKS.csv` — GENERATED. Do not hand-edit; re-run
+   `uv run xat-practice tasks --write`. The records live in
+   `src/xat_practice/tasks.py`, so a task has ONE home and this file is the
+   narrative, not a second board. `uv run xat-practice tasks` prints the board.
+7. `docs/COVERAGE.md` — GENERATED. Do not hand-edit; re-run `uv run xat-practice coverage`
 
 Commands (all must pass before any commit):
 
@@ -82,7 +86,10 @@ P0 — CORRECTNESS. Nothing above this line ships.
 P1 — THE NEXT LESSONS. Ordered. Each unblocks the one after it.
 ================================================================================
 
-[P1-1] ADD A PREREQUISITE GRAPH over subtopics.
+TASK IDs below map to `docs/TASKS.csv`, which is the board. This file is the
+narrative; the CSV carries status, owner role and the falsifying input for each.
+
+[P1-1] ADD A PREREQUISITE GRAPH over subtopics.  (TASK-013)
        Why first: it decides what "next" means, and the honest answer is currently
        "the highest-weight node whose prerequisites are satisfied", NOT "the biggest
        block". DI is the biggest block (6.71 q/yr) and is NOT reachable today.

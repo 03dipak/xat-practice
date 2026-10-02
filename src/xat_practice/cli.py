@@ -20,11 +20,14 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from . import build_opencode, bundle, gates
+from . import build_opencode, bundle, gates, tasks
 from .bundle import OUT_ROOT
 from .items import LESSON_SHAPE, LEVEL_RECIPES
 from .registry import LESSONS, items_written, subtopics_written
 from .syllabus import Tier, by_tier, self_check, stratum_counts
+
+#: Where the generated documents live. Used by `tasks --write`.
+DOCS = Path(__file__).resolve().parent.parent.parent / "docs"
 
 if TYPE_CHECKING:
     import http.server
@@ -129,6 +132,30 @@ def cmd_build(_: argparse.Namespace) -> int:
 def cmd_agents(_: argparse.Namespace) -> int:
     """Rebuild opencode.json from build_opencode.py."""
     build_opencode.main()
+    return 0
+
+
+def cmd_tasks(args: argparse.Namespace) -> int:
+    """Print the task board, or regenerate `docs/TASKS.csv` from it.
+
+    The CSV is GENERATED, not hand-edited. Two places to change a task is the
+    defect this project keeps paying for, so the records live in
+    `xat_practice/tasks.py` and the CSV is a view of them.
+
+    Two columns are the point. `owner` is an `opencode.json` role and `evidence` is
+    what that role may look at -- MEASURED 2026-10-02: the ten agents were scoped in
+    prose in AGENTS.md and nothing tied a task to a role, so nothing stopped the
+    right question being asked of the wrong reviewer. And `falsifying_input` is the
+    WRONG input a check must fail on, because a task whose only evidence is a test
+    that has seen a true statement can be declared done by nothing.
+    """
+    if getattr(args, "write", False):
+        out = Path(args.out) if args.out else DOCS / "TASKS.csv"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(tasks.render_csv(), encoding="utf-8")
+        print(f"wrote {out}  ({len(tasks.TASKS)} records, {len(tasks.COLUMNS)} cols)")
+        return 0
+    print(tasks.render_board(), end="")
     return 0
 
 
@@ -387,6 +414,12 @@ def main(argv: list[str] | None = None) -> int:
         fn=cmd_levels)
     sub.add_parser("build", help="build the static lesson bundle").set_defaults(
         fn=cmd_build)
+    tp = sub.add_parser("tasks", help="the task board: records, status, owners")
+    tp.add_argument("--write", action="store_true",
+                    help="regenerate docs/TASKS.csv from the records")
+    tp.add_argument("--out", help="write the CSV somewhere else")
+    tp.set_defaults(fn=cmd_tasks)
+
     sub.add_parser("agents", help="rebuild opencode.json").set_defaults(
         fn=cmd_agents)
     sub.add_parser("weightage", help="topic weight model + self-check").set_defaults(
