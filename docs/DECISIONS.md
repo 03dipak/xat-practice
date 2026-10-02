@@ -1489,3 +1489,52 @@ network rather than a broken gate. `lesson.js` shipped broken this exact way for
 whole wave past **161 passing tests**, so
 `test_the_probe_script_actually_parses` now runs `node --check` on every inline
 block of `tools/ui_probe.html`, joining the node-free quote-parity check.
+
+---
+
+## 17. D26 — the LEVEL is the learner's choice; the MIX is only for a paper
+
+### 17.1 The question that prompted it
+
+The owner asked whether a 20-question practice block should be **2/5/8/5** (what
+`LEVEL_MIX` produces at n=20) or **5/5/5/5**, on the grounds that a learner asking
+for foundation should get foundation.
+
+### 17.2 Ruling: neither, because they are two different products
+
+`LEVEL_MIX` is 10/25/40/25 and it is **derived, not chosen**: 6.71 DI
+questions/year at ~2 minutes each against a 170-minute budget for 75 Part-1
+questions gives **136 s/question**, so the top of a real paper is not meant to be
+25% hard. That derivation is the correct basis for a **mock**, whose whole job is
+to reproduce the paper's shape.
+
+A **drill** is not a paper. A learner who says "give me foundation" has made a
+request, and answering it with a 40% medium slice is answering a different
+question. So:
+
+| product | quota | source |
+|---|---|---|
+| mock / full paper | `LEVEL_MIX` → 2/5/8/5 at n=20 | measured from the exam's timing |
+| drill at a learner-chosen level | level-filtered | the learner |
+
+**5/5/5/5 is a question we therefore do not answer.** It would only be right if
+the learner were required to practise all four levels equally, which is not what
+"restrict me to what I want to learn" asks for.
+
+### 17.3 The consequence, which is the part that matters
+
+**`G11` must not be run on a level-filtered drill.** It apportions a shape's
+level mix, and a single-level drill is not a shape in `items.py`. Handing it one
+would refuse items for "under quota (0/5)" — which is precisely the defect that
+deleted the hard rung from Lesson 1 and produced D12, and the one D23 had to fix
+one level up for the pool of lessons. **A paper rule is given a paper.**
+
+### 17.4 The real capacity constraint on a 20-item drill
+
+20 items at one level need 20 items that are genuinely distinct, and `G17`
+(derivation shapes) plus `G16` (every distractor produced by the move it names)
+make that expensive to fake. The ledger's proxy is the trap count:
+`block capacity` reports how many subtopics have ≥10 named traps, and it currently
+reads **0 of 40** — `geo_mens:similarity-and-area-ratios` has 3 against 16
+item-level misconceptions. Folding authored misconceptions into the syllabus is
+the prerequisite for any 20-item block, and it is not yet done.

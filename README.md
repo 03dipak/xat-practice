@@ -196,51 +196,77 @@ form you chose.
 
 ## Run it
 
-### Sit a lesson in the browser
+### Sit a lesson in the browser — one command
 
 ```bash
-uv run xat-practice build        # writes out/lesson-01-simple-interest/ and
-                                 # out/lesson-02-geometry-similarity/
-uv run xat-practice serve        # lesson 1 at http://127.0.0.1:8000/
-uv run xat-practice serve --lesson lesson-02-geometry-similarity
+uv run xat-practice serve
 ```
 
-**`build` does not give you a web URL.** It writes files and serves nothing — the
-obvious reading of "build" is that you can go and look at the result, and you
-cannot. `build` now prints the `serve` line for each lesson so the next step is
-not a guess.
+That is the whole thing. It asks what you want to work on and serves it:
 
-`serve --lesson` takes a **`lesson_id`** from the registry (a path also works). It
-used to take a path and default to `out/` — a directory of lesson directories — so
-the default served a listing and the second lesson was unreachable without knowing
-its exact path.
+```
+========================================================================
+XAT PRACTICE -- what do you want to work on?
+========================================================================
+XAT 2026 -- 95 questions, Part 1 is 75 questions in 170 minutes with NO sectional time limit.
+  QA&DI 28   VA&LR 26   DM 21
+  Part 2 GK 20 in 10 minutes -- EXCLUDED from the percentile by XLRI, so it is out of scope here.
+  5 options, +1 correct, -0.25 wrong, and -0.10 per blank after the first 8.
 
-`serve` binds **loopback only** and serves one directory, so each lesson wants its
-own port. It exists for one reason: browsers block `fetch()` of a sibling JSON on
-`file://`.
+  QA&DI -- the only section this project trains, and
+  the only one with lessons written. VA&LR and DM are in the
+  paper above and are not built here; that is the honest state.
 
-**MEASURED 2026-10-02, and this is the failure that makes the second step
-mandatory:** opened as a `file://` path, `out/lesson-01-simple-interest/index.html`
-renders **"The question could not be loaded"** — confirmed by rendering it in
-headless Chromium. Nothing is broken; `file://` cannot fetch `paper.json`, and that
-is the commit barrier working. But with no URL to visit it reads as a dead build,
-so the rule is: **`build` then `serve`, never `file://`.** Ctrl-C to stop.
+   1. Geometry & Mensuration   similarity-and-area-ratios
+   2. Profit, Loss & Interest  simple-interest
 
-It is **threaded**, and that is not an optimisation. It used to be a
-single-connection `TCPServer`, which parked its only thread forever the first
-time a browser held a connection open — a favicon probe, a preconnect — and then
-served nothing at all, with no error and no exit. The symptom was a lesson page
-that "takes too much time to load"; the cause was the server, not the page. See
-`cli.make_server` and
-`test_one_held_connection_does_not_block_the_next_request`.
+   2 of 40 subtopics written. Run `uv run xat-practice coverage` for the full ledger.
+   0. quit
 
-If the page ever shows **"The question could not be loaded"** instead of a
-question, that is the fetch failing, and the card will tell you why — including
-the case where `index.html` was opened directly rather than served.
+  choose (or 0 to quit): 1
+  serving Geometry & Mensuration -- similarity-and-area-ratios
+serving lesson-02-geometry-similarity at http://127.0.0.1:8000/  (ctrl-c to stop)
+```
 
-Written: **Lesson 1, Simple Interest** and **Lesson 2, Geometry (areas and
-similar shapes)**, four rungs each. The sections are still to come — see
-`docs/COVERAGE.md` for the ledger and `docs/DECISIONS.md` D14 for the order.
+**Why a prompt rather than a default.** MEASURED 2026-10-02: `serve` with no
+argument opened the *first* registered lesson, so anyone who wanted Geometry typed
+the documented command and got Simple Interest, with nothing anywhere saying a
+choice existed. The default was safe by being invisible. **A default that hides
+the choice is worse than a prompt.**
+
+The menu lists every written lesson in **measured topic-weight order** (DI 6.71
+q/yr would lead; Geometry 4.57 is next), states the unwritten count rather than
+hiding it, and every figure in it is read from `syllabus.PAPER_SHAPE` — so the menu
+cannot quote a spec the code does not hold.
+
+Non-interactive stdin (CI, a pipe) prints the menu and exits rather than hanging.
+
+Prefer to skip the menu: `uv run xat-practice serve --lesson <lesson_id>`.
+
+### Two different things called "a mix"
+
+The level mix is **not** one decision, and conflating them is the trap:
+
+| what is being produced | mix | why |
+|---|---|---|
+| a **mock** / full paper | `LEVEL_MIX` 10/25/40/25 → **2/5/8/5** at n=20 | derived from the exam's own timing: 136 s/question across 170 minutes, so the top of the paper is not meant to be 25% hard |
+| a **drill** at a level the learner chose | level-filtered — the learner's choice | "I want foundation" is not a request for a mix |
+
+So the level is the learner's, and **the mix is applied only where a paper is being
+simulated**. `G11` enforces the paper mix and must not be handed a level-filtered
+drill: a paper rule given a non-paper is the defect behind D12 and D23, and it is
+how a hard rung once got deleted from Lesson 1.
+
+`serve` binds **loopback only** and serves one directory, so each lesson has its
+own port — which is why the menu asks first instead of serving all of them.
+
+It exists because browsers block `fetch()` of a sibling JSON on `file://`.
+
+**MEASURED 2026-10-02, and this is why the second command is mandatory:** opened
+as a `file://` path, `out/lesson-01-simple-interest/index.html` renders **"The
+question could not be loaded"** — confirmed by rendering it in headless Chromium.
+Nothing is broken; `file://` cannot fetch `paper.json`, and that is the commit
+barrier working. But with no URL to visit it reads as a dead build. Ctrl-C to stop.
 
 ### The verbs
 

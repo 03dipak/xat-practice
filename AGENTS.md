@@ -277,6 +277,19 @@ teach.
 - **`serve --lesson` takes a lesson_id, not a path.** It defaulted to `out/`, a
   directory of lesson directories, so the default served a listing and the second
   lesson was unreachable without knowing its exact path.
+- **`serve` with no `--lesson` ASKS, and it used to guess.** MEASURED 2026-10-02:
+  it defaulted to the FIRST registered lesson, so a learner who wanted Geometry
+  typed the documented command and got Simple Interest with nothing saying a
+  choice existed. Safe by being invisible. `menu.py` now asks, orders by measured
+  topic weight, prints `2 of 40 subtopics written` rather than hiding the 38, and
+  reads every paper figure from `syllabus.PAPER_SHAPE`. Junk input returns None —
+  **never the first lesson**, which is the bug in a new dress.
+- **The LEVEL is the learner's; the MIX is only for a paper (D26).**
+  `LEVEL_MIX` 10/25/40/25 → 2/5/8/5 at n=20 is *derived* from 136 s/question, so it
+  is right for a MOCK. A drill is level-filtered, and **`G11` must not be handed a
+  single-level drill** — it would refuse items for "under quota (0/5)", the D12
+  defect. Do not "fix" this by flattening `LEVEL_MIX` to 25% each: that would
+  change `QUANT_MOCK` and `FULL_MOCK` too, and destroy the measured basis.
 - **`uv sync` PRUNES.** It removes anything in `.venv` that is not declared in
   `pyproject.toml`. Before `[dependency-groups] dev` existed it deleted mypy,
   pytest, pytest-cov and ruff — the four tools the gates are run with. Declare

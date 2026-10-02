@@ -273,6 +273,31 @@ def cmd_serve(args: argparse.Namespace) -> int:
     a browser holds a connection open, and the symptom is a page that never
     loads and never errors.
     """
+    # ONE COMMAND. With no `--lesson`, ask. MEASURED 2026-10-02: `serve` alone
+    # opened the FIRST registered lesson, so a learner who wanted Geometry and
+    # typed the documented command got Simple Interest and nothing telling them a
+    # choice existed. A default that hides the choice is worse than a prompt.
+    #
+    # Non-interactive stdin (CI, a pipe) must not hang, so it prints the menu and
+    # stops with instructions rather than waiting for a keypress that will never
+    # come. A menu that blocks forever in a script is a menu that hangs CI.
+    if args.lesson is None:
+        if not sys.stdin.isatty():
+            from .menu import render_menu
+
+            print(render_menu(), end="")
+            print("  stdin is not a terminal, so nothing was chosen. Re-run "
+                  "without a pipe,\n  or pass --lesson <lesson_id>.")
+            return 0
+        from .menu import pick
+
+        chosen = pick()
+        if chosen is None:
+            print("  nothing selected; not serving.")
+            return 0
+        args.lesson = chosen.lesson_id
+        print(f"  serving {chosen.label} -- {chosen.subtopic_label}")
+
     # A LESSON ID, not a path. MEASURED 2026-10-02: this took a filesystem path
     # and defaulted to `bundle.OUT_DIR`, which is `out/` -- a directory of lesson
     # directories. Serving it gave a directory listing, so with two lessons the
@@ -339,8 +364,9 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--port", type=int, default=8000)
     s.add_argument(
         "--lesson",
-        default=LESSONS[0].lesson_id,
+        default=None,
         help="lesson_id from the registry, or a path to a bundle directory. "
+             "OMIT IT to be asked what you want to work on. "
              f"One of: {', '.join(x.lesson_id for x in LESSONS)}",
     )
     s.set_defaults(fn=cmd_serve)
