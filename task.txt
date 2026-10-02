@@ -64,7 +64,7 @@ recreated. **If you rename again, recreate the venv too:**
 
 Last COMPLETED full gate, at the new path, this session:
 
-    230 passed, 1 xfailed
+    230 passed, 2 xfailed
     96.64% coverage on src/xat_practice/*.py, ALL NINE FILES
     ruff clean, mypy clean on 9 source files
     CLI smoke-tested AND unit-tested: gates, build, ev, levels, shapes,

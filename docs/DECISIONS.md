@@ -905,3 +905,82 @@ disease as the one it was built to catch:
 And `test_gate_result_bookkeeping` had asserted `G12 == 1` — it depended on defect
 2. The assertion is now `== 0`, with the reason recorded, because the count check
 belongs to a G12 test of its own.
+
+---
+
+## 8. D18 — TEACH THEN ASK, and the gap analysis that asked for it
+
+### D18 — The lesson teaches before it asks
+
+**Ruled 2026-10-02, by the owner.** Of the two options offered, *teach then ask*
+was chosen: a short explanation and one worked example **before** the first MCQ,
+not after it.
+
+**Why it was not already right, quoted from the file.** The step-by-step renders
+only inside `check()`, so the formula first reaches the screen at
+`SOLUTIONS["L1-F"]` — **after question 1 is answered**. A learner who does not
+know the formula cannot learn it here. The only pre-commit sighting of it is a
+`<textarea placeholder>`, grey text that the first keystroke deletes.
+
+**What a beginner needs and what is present:**
+
+| need | state |
+|---|---|
+| the formula | present, but only *after* answering |
+| what each variable **means** | **absent** — nothing says principal is "the money you start with" |
+| one worked example | present, and good, but gated behind Q1 |
+| **units** (R per year, T in years) | **absent** — so a monthly rate can be dropped in as annual |
+
+`viewer` also caught the trap in fixing this: **the only worked example in the
+file is question 1 verbatim** (1,000 at 10% for 2 years → 200). Reusing it hands
+over Q1's key before the commit and destroys Q1 as a check. The example must run
+on different numbers — e.g. 2,000 at 5% for 3 years → 300 — so it tests
+**transfer**.
+
+`viewer` also confirmed what is already good: the commit barrier is real as
+rendered, and the per-option "why X is wrong" lines name a concrete move. Only
+the *ordering* is wrong.
+
+### 8.1 The gap analysis, from three roles
+
+Ten agents were available. Three were run, because those three decide whether a
+"zero to pro" claim is defensible at all; the other seven audit code, gates and
+docs, and none of them can change the teaching. Running all ten would have
+produced overlapping prose, not a sharper answer.
+
+| # | gap | evidence |
+|---|---|---|
+| 1 | **The hard rung is EASY relabelled.** `12000 + 12000*10*2/100` masks to `N + N*N*N/N`, **identical** to EASY's. Changing only the flags drops it 7.40 → 2.50 = EASY. **66% of its difficulty is a declared flag.** | `test_each_rung_has_its_own_derivation_shape`, measured **3 of 4** |
+| 2 | **No gate compares a level flag to the derivation it describes.** `grep` finds no reference to `insight_required`/`needs_substitution`/`derivation_steps` in `gates.py`. | both reviewers, independently |
+| 3 | **`G6` fingerprints the STEM, not the derivation.** So compounding-as-SI is drilled at L1-E *and* L1-H, and every gate passes: `G16` checks each produces its option, `G12` checks the strings differ, nobody notices the same move appears twice. | `question-setter` |
+| 4 | **`claimed_level` is `None` on 4 of 4**, so `G7`'s entire automated half is inert. The rung lives in a comment. 160 items with rung labels in comments is an asserted ladder. | `question-setter` |
+| 5 | **1 of 40 subtopics written = 2.5%.** 39 lessons remain. | measured |
+| 6 | **Trap readiness 1 of 2.** Of this subtopic's two named traps, only the "rate on the amount" trap is used; "time in months used without converting the rate" appears in **0 of 4**. On the 38 untrained subtopics it is 0 of 90. | `question-setter` |
+| 7 | **A shape with no clock and no penalty cannot teach attempt strategy.** `minutes=0`, `negative_marking=False`, so the learner never meets 136s per question, guess EV = 0.0000, or the 9th blank at −0.10. That is ~28 questions of pacing calibration per mock. | `question-setter` |
+| 8 | **`derive_level` band margins are 0.25 / 0.50 / 0.45 / 2.40.** A ladder, not a histogram — but three of four rungs sit under 0.5 from a boundary. | `level-auditor` |
+
+### 8.2 What the gap analysis demands of Geometry's first lesson
+
+Three structural properties, from `level-auditor`:
+
+1. **Four pairwise-distinct digit-masked derivation shapes.** Lesson 1 scores
+   **3 of 4** and passes every gate. Geometry must score **4 of 4**.
+2. **One NEW operation per rung, and FOUNDATION must already isolate it.** HARD
+   may substitute into the ratio FOUNDATION isolated; it may **not** reach into
+   `circle-tangents`, which is a different subtopic.
+3. **Every flag provable from the derivation string.** `needs_substitution` and
+   `insight_required` must correspond to a sub-expression no lower rung contains.
+   Otherwise the score is a label with arithmetic on it.
+
+**The one measurement that would prove a new ladder is real:**
+`len({shape(i.derivation) for i in LESSON}) == 4`, zero LLM calls, falsifiable by
+the exact false input that exposed lesson 1 — relabel an EASY item HARD and it
+drops to 3 of 4 while every level gate still passes.
+
+### 8.3 The next gate, named
+
+**`G17`: a rung's claimed flags must be provable from its derivation.** Not built
+yet. It is the gate that would have caught gap #1 and #2, and it is the reason
+`test_each_rung_has_its_own_derivation_shape` is `xfail(strict=True)` rather than
+a passing test — because until `G17` exists, the check is a fact about one lesson
+and not a rule about forty.

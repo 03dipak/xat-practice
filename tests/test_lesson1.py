@@ -436,3 +436,50 @@ def test_L1M_needs_its_two_collapse_traps_redesigned():
         "solution text and the 3:2 distractor, which both say the shortcut is "
         "wrong, must be re-checked against the new numbers."
     )
+
+
+@pytest.mark.xfail(strict=True, reason="OPEN DEFECT, measured 2026-10-02 by "
+                                        "level-auditor AND question-setter, "
+                                        "independently. See the docstring.")
+def test_each_rung_has_its_own_derivation_shape():
+    """The measurement both reviewers asked for: FOUR pairwise-distinct
+    digit-masked derivation shapes across the four rungs.
+
+    MEASURED, and it is 3 of 4:
+
+        L1-F  1000*10*2/100                   ->  N*N*N/N
+        L1-E  10000 + 10000*5*2/100           ->  N + N*N*N/N
+        L1-M  (1440*100/(8*3))/(2160*...)     ->  (N*N/(N*N)) / (N*N/(N*N))
+        L1-H  12000 + 12000*10*2/100          ->  N + N*N*N/N     <-- same as E
+
+    **The HARD rung is EASY's arithmetic relabelled.** Falsification, run by
+    `level-auditor`: replacing L1-H's `insight_required=False`,
+    `needs_substitution=False`, `derivation_steps=2` -- i.e. changing nothing a
+    learner sees -- drops its score from 7.40 to 2.50, which is the EASY tier.
+    So 4.90 of 7.40, **66% of the hard item's difficulty, is a declared flag with
+    nothing in the derivation to prove it.** The level is partly a label.
+
+    Why no gate caught it, and this is the generalisable finding:
+
+    - `G7` compares a `claimed_level` to the derived level, and `claimed_level` is
+      `None` on all four items, so it has nothing to compare.
+    - `G6` fingerprints the STEM, not the DERIVATION. So "compounding read as
+      simple interest" is taught at L1-E (11,025) and again at L1-H (14,520) and
+      every gate passes -- `G16` confirms each produces its own option, `G12`
+      confirms the misconception strings differ, and nobody notices the same wrong
+      move is being drilled twice.
+    - Nothing anywhere compares a level FLAG to the derivation the flag claims to
+      describe. `derive_level` reads the flags; no gate reads the derivation.
+
+    So this is the next gate the product needs: **a rung's claimed flags must be
+    provable from its derivation string.** Until then the ladder's top rung is a
+    comment. `xfail(strict=True)` so it cannot be quietly fixed at the symptom --
+    relabelling L1-H's numbers without changing its structure would flip this."""
+    import re
+
+    shapes = [re.sub(r"[0-9]+", "N", it.derivation) for it in L.LESSON]
+    assert len(set(shapes)) == 4, (
+        f"only {len(set(shapes))} of 4 rungs have a distinct derivation shape. "
+        f"The hard rung must add an OPERATION, not a label: "
+        f"{dict(zip((it.id for it in L.LESSON), shapes, strict=True))}"
+    )

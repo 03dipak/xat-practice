@@ -27,7 +27,7 @@ Waves 0 and 1 landed. **1 of 40 subtopics is written** (Simple Interest, four
 rungs, all four admitted, all keys recomputed). Measured on 2026-10-02:
 
 ```
-.venv/bin/python -m pytest -q --strict-markers --cov      -> 230 passed, 1 xfailed
+.venv/bin/python -m pytest -q --strict-markers --cov      -> 230 passed, 2 xfailed
 .venv/bin/python -m coverage report --include="src/xat_practice/*.py" \
     --fail-under=95 --precision=2                        -> TOTAL 96.64%
 .venv/bin/ruff check src tests                           -> All checks passed
