@@ -510,13 +510,11 @@ def test_each_rung_has_its_own_derivation_shape():
 # the product failing at step one. The owner chose TEACH THEN ASK.
 
 def test_the_lesson_carries_teaching_for_its_subtopic():
-    from xat_practice.bundle import TEACH
-
-    assert L.SUBTOPIC in TEACH, (
+    assert L.SUBTOPIC in L.TEACH, (
         f"no teaching block for {L.SUBTOPIC}. The step-by-step renders only "
         "inside check(), so without this a beginner cannot learn the topic here."
     )
-    t = TEACH[L.SUBTOPIC]
+    t = L.TEACH[L.SUBTOPIC]
     for field in ("heading", "why", "formula", "legend", "why_divide", "units",
                   "example", "bridge"):
         assert t.get(field), f"the teaching block is missing {field!r}"
@@ -525,9 +523,7 @@ def test_the_lesson_carries_teaching_for_its_subtopic():
 def test_the_teaching_defines_every_symbol_it_uses():
     """MEASURED missing entirely before D18: nothing in the bundle said what
     'principal' MEANS. A formula with undefined symbols is not an explanation."""
-    from xat_practice.bundle import TEACH
-
-    t = TEACH[L.SUBTOPIC]
+    t = L.TEACH[L.SUBTOPIC]
     assert len(t["legend"]) == 3
     for letter, _name, meaning in t["legend"]:
         assert letter in t["formula"], f"{letter} is defined but never used"
@@ -540,9 +536,7 @@ def test_the_teaching_defines_every_symbol_it_uses():
 def test_the_teaching_states_the_units_rule():
     """MEASURED missing before D18. Without it a monthly rate can be dropped in
     as an annual one and nothing on the page says that is illegal."""
-    from xat_practice.bundle import TEACH
-
-    units = TEACH[L.SUBTOPIC]["units"].lower()
+    units = L.TEACH[L.SUBTOPIC]["units"].lower()
     assert "per year" in units
     assert "month" in units, (
         "the units rule must say what to do when the rate is not annual, or it "
@@ -562,9 +556,7 @@ def test_the_teaching_example_does_not_hand_over_question_ones_key():
     arithmetic."""
     import re
 
-    from xat_practice.bundle import TEACH
-
-    example = TEACH[L.SUBTOPIC]["example"]
+    example = L.TEACH[L.SUBTOPIC]["example"]
     stem = L.LESSON[0].stem
     for forbidden in ("1,000", "1000", "10%"):
         assert forbidden not in example, (
@@ -585,7 +577,7 @@ def test_the_teaching_is_in_the_paper_and_never_in_the_key():
     `answerkey.json` would ship the teaching with the answers."""
     from xat_practice import bundle
 
-    files = bundle.build_lesson(L.LESSON_ID, L.LESSON, L.SOLUTIONS)
+    files = bundle.build_lesson(L.LESSON_ID, L.LESSON, L.SOLUTIONS, L.TEACH)
     assert files["paper.json"]["teach"], "paper.json carries no teaching"
     assert "teach" not in files["answerkey.json"], (
         "the teaching is behind the commit barrier, so it will not be seen until "

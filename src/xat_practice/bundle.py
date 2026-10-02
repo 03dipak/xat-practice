@@ -28,14 +28,28 @@ own key is a bundle that teaches the wrong thing with a clean conscience.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 
-from . import lesson1
 from .gates import run
 from .items import Item
-from .lesson1 import TEACH
+from .registry import LESSONS, Lesson
+from .registry import assert_registry_is_honest as registry_assert_honest
 
-OUT_DIR = Path(__file__).resolve().parent.parent.parent / "out" / "lesson-01"
+OUT_ROOT = Path(__file__).resolve().parent.parent.parent / "out"
+
+
+def out_dir(lesson_id: str) -> Path:
+    """Where a lesson's bundle goes.
+
+    MEASURED 2026-10-02: this was a single hardcoded `out/lesson-01`, so a second
+    lesson had nowhere to live. Now the directory is DERIVED from the lesson id,
+    which means a lesson cannot be built into the wrong place by accident."""
+    return OUT_ROOT / lesson_id
+
+
+#: Retained for the tests and for `--lesson`'s default, which is the FIRST lesson.
+OUT_DIR = out_dir(LESSONS[0].lesson_id)
 
 # The stylesheet is its OWN FILE, and that is load-bearing rather than tidy.
 #
@@ -530,7 +544,9 @@ def build_id(payload: dict[str, object]) -> str:
 
 
 def build_lesson(lesson_id: str, items: tuple[Item, ...],
-                 solutions: dict[str, tuple[str, ...]]) -> dict[str, object]:
+                 solutions: Mapping[str, tuple[str, ...]],
+                 teach: Mapping[str, Mapping[str, object]] | None = None
+                 ) -> dict[str, object]:
     """Gate the lesson, then emit the two halves of the bundle.
 
     The paper and the key are SEPARATE FILES on purpose. A single HTML file
@@ -554,7 +570,9 @@ def build_lesson(lesson_id: str, items: tuple[Item, ...],
         # did not know the formula could not learn it here. This block is rendered
         # BEFORE the first question, so it belongs in the PAPER -- the file the
         # page loads on load. It is not in answerkey.json, and it must never be.
-        "teach": dict(TEACH.get(items[0].subtopic_id, {})),
+        # D18: the teaching lives in the PAPER, never in answerkey.json -- it has
+        # to be seen before the commit.
+        "teach": dict((teach or {}).get(items[0].subtopic_id, {})),
         "shaping": "LESSON",
         "negative_marking": False,
         "items": [
@@ -604,21 +622,36 @@ def build_lesson(lesson_id: str, items: tuple[Item, ...],
     return {"paper.json": paper, "answerkey.json": key}
 
 
-def main() -> None:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    files = build_lesson(lesson1.LESSON_ID, lesson1.LESSON, lesson1.SOLUTIONS)
-    (OUT_DIR / "index.html").write_text(HTML)
-    (OUT_DIR / "lesson.js").write_text(JS)
-    (OUT_DIR / "style.css").write_text(STYLE)
+def build_one(lesson: Lesson) -> Path:
+    """Gate, split, and write ONE lesson. Raises if any gate refuses."""
+    registry_assert_honest()
+    files = build_lesson(lesson.lesson_id, lesson.items, lesson.solutions,
+                          lesson.teach)
+    dest = out_dir(lesson.lesson_id)
+    dest.mkdir(parents=True, exist_ok=True)
+    (dest / "index.html").write_text(HTML)
+    (dest / "lesson.js").write_text(JS)
+    (dest / "style.css").write_text(STYLE)
     for name, payload in files.items():
-        (OUT_DIR / name).write_text(json.dumps(payload, indent=2) + "\n")
+        (dest / name).write_text(json.dumps(payload, indent=2) + "\n")
+    return dest
 
-    paper = files["paper.json"]
-    assert isinstance(paper, dict)
-    print(f"built {OUT_DIR.relative_to(OUT_DIR.parent.parent)}/")
-    for it in paper["items"]:
-        print(f"  {it['id']:6s} {it['level']:11s} score {it['level_score']:5.2f}  "
-              f"{it['level_drivers']}")
+
+def main() -> None:
+    """Build EVERY lesson in the registry.
+
+    Looping rather than building lesson 1 is the point of the registry: a lesson
+    that exists in code but is never served is a lesson that does not exist."""
+    for lesson in LESSONS:
+        dest = build_one(lesson)
+        files = build_lesson(lesson.lesson_id, lesson.items, lesson.solutions,
+                              lesson.teach)
+        paper = files["paper.json"]
+        assert isinstance(paper, dict)
+        print(f"built {dest.relative_to(OUT_ROOT.parent)}/  build {paper['build']}")
+        for it in paper["items"]:
+            print(f"  {it['id']:6s} {it['level']:11s} score {it['level_score']:5.2f}  "
+                  f"{it['level_drivers']}")
 
 
 if __name__ == "__main__":

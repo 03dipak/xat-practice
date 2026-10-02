@@ -20,8 +20,9 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from . import build_opencode, bundle, gates, lesson1
+from . import build_opencode, bundle, gates
 from .items import LESSON_SHAPE, LEVEL_RECIPES
+from .registry import LESSONS, all_items, items_written, subtopics_written
 from .syllabus import Tier, by_tier, self_check, stratum_counts
 
 if TYPE_CHECKING:
@@ -34,12 +35,13 @@ def cmd_gates(_: argparse.Namespace) -> int:
     Refusal counts are over a NAMED population, because a count with no
     denominator is a lie that looks like a pass.
     """
-    res = gates.run(list(lesson1.LESSON))
-    print(f"population: {len(lesson1.LESSON)} items "
-          f"(lesson {lesson1.LESSON_ID})")
+    every = all_items()
+    res = gates.run(every)
+    print(f"population: {len(every)} items across {len(LESSONS)} lesson(s): "
+          + ", ".join(x.lesson_id for x in LESSONS))
     print(f"admitted:   {len(res.admitted)}")
     print(f"refused:    {len(res.refusals)}  "
-          f"(rate {res.refusal_rate} over {len(lesson1.LESSON)})")
+          f"(rate {res.refusal_rate} over {len(every)})")
     for gate, n in sorted(res.by_gate().items()):
         if n:
             print(f"  {gate}: {n}")
@@ -54,8 +56,8 @@ def cmd_levels(_: argparse.Namespace) -> int:
     The drafter's claimed level is shown beside it when there is one, because a
     disagreement is a refusal (G7) and a silent overwrite would hide it.
     """
-    res = gates.run(list(lesson1.LESSON))
-    for item in lesson1.LESSON:
+    res = gates.run(all_items())
+    for item in all_items():
         rep = res.reports[item.id]
         claim = f"claimed {item.claimed_level}" if item.claimed_level else "no claim"
         print(f"{item.id:6s} {rep.level.value:11s} score {rep.score:5.2f}  "
@@ -97,9 +99,18 @@ def cmd_weightage(_: argparse.Namespace) -> int:
             mark = "" if t.owner_listed else "   [added, D4]"
             print(f"  {t.weight:5.2f}/yr  {t.name}{mark}")
         print()
-    print(f"subtopics trained: {len(SUBTOPICS)}   written: {len(lesson1.LESSON)}")
+    # MEASURED 2026-10-02: this line printed `written: 4`, which is the ITEM
+    # count, sitting between two SUBTOPIC counts on a project with 40 subtopics.
+    # It read as "four topics done". A count printed without saying what it counts
+    # is a lie that looks like a pass.
+    written_sub = subtopics_written()
+    print(f"subtopics trained: {len(SUBTOPICS)}   "
+          f"written: {len(written_sub)}   items written: {items_written()}")
     named_traps = sum(len(s.traps) for s in SUBTOPICS)
     print(f"named traps:       {named_traps}")
+    if written_sub:
+        print(f"coverage:          {len(written_sub)}/{len(SUBTOPICS)} subtopics "
+              f"= {100 * len(written_sub) / len(SUBTOPICS):.1f}%")
     return 0
 
 

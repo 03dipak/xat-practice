@@ -1128,3 +1128,68 @@ both specific to question 1.
 
 **47 UI checks**, nine of them on the teaching, including that it renders *above*
 the question, and that it does not leak the key.
+
+---
+
+## 11. D20 — the registry, and the count that was lying
+
+**Ruled 2026-10-02.** Two defects, both found while planning the 20-question
+block, both about *what exists* rather than what is correct.
+
+### 11.1 `written: 4` was the ITEM count
+
+```
+$ xat-practice weightage          # before
+subtopics trained: 40   written: 4
+```
+
+Four is the number of **items**. The line sits between two **subtopic** counts on
+a project with **40 subtopics**, so it read as "four topics done" when the truth
+is **one**. `viewer` measured the real ratio at 2.5%, and `pl_int` is **6.64%** of
+the 28-question section the learner can attempt.
+
+A lesson covers exactly one subtopic. So the CLI now prints the two numbers
+separately, and the coverage figure with its denominator:
+
+```
+subtopics trained: 40   written: 1   items written: 4
+coverage:          1/40 subtopics = 2.5%
+```
+
+`test_weightage_no_longer_conflates_items_with_subtopics` refuses a bare
+`written: N` on a line whose neighbours are subtopic counts. **A count printed
+without saying what it counts is a lie that looks like a pass** — and this one
+had been printed, and read, for a whole session.
+
+### 11.2 A second lesson was impossible without editing six files
+
+MEASURED: **11 references to `lesson1` across 6 files**, and
+`bundle.OUT_DIR` was a hardcoded `out/lesson-01`. So Lesson 2 did not mean adding
+a file; it meant editing six of them by hand, and `out/` had exactly one legal
+slot.
+
+`registry.py` is now the single answer to "what is written". `Lesson` carries the
+id, subtopic, items, solutions and teaching together, because a lesson is a *unit*
+— four rungs, the step-by-step and the "before you start" block mean nothing
+apart. `bundle.main()` loops; `out_dir()` derives the directory from the lesson id;
+`gates` and `levels` report over **every** lesson rather than Lesson 1.
+
+`assert_registry_is_honest()` fails the build if a lesson covers two subtopics, if
+an item has no step-by-step, if a step-by-step does not end on its own key, or if
+two lessons claim the same subtopic. The last one is why "subtopics written" is a
+count and not a sum with a duplicate in it.
+
+### 11.3 A test that passed for the wrong reason
+
+`test_gates_exits_non_zero_and_names_the_refused_item` planted a wrong key by
+patching `lesson1.LESSON`. The moment `cmd_gates` began reading the registry, that
+patch stopped having any effect — the verb ran against the real lesson, found
+nothing wrong, and returned 0 while the test asserted 1.
+
+It now fails loudly. **But it did not fail loudly for the right reason first**: the
+planted-defect tests were updated to patch `cli.all_items`, the seam the verb
+actually calls, and until that was done one of them was asserting against a stub
+nothing read.
+
+Recorded because it is the same shape as the coverage floor that read eight files
+out of nine: **a test can be green, be well-named, and be examining nothing.**

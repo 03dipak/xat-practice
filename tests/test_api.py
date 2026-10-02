@@ -14,6 +14,7 @@ import pytest
 
 from xat_practice import syllabus as S
 from xat_practice.items import LEVEL_RECIPES, Level, derive_level
+from xat_practice.registry import LESSONS
 from xat_practice.solver import SOLVER, Failure, Verdict
 
 # ---------------------------------------------------------------------------
@@ -376,7 +377,7 @@ def test_one_held_connection_does_not_block_the_next_request():
 
     port = _free_port()
     httpd = make_server(Path(__file__).resolve().parent.parent
-                        / "out" / "lesson-01", port)
+                        / "out" / LESSONS[0].lesson_id, port)
     t = threading.Thread(target=httpd.serve_forever, daemon=True)
     t.start()
     held = socket.create_connection(("127.0.0.1", port))

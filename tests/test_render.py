@@ -39,7 +39,12 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 RUNNER = ROOT / "tools" / "ui_probe.py"
-BUNDLE = ROOT / "out" / "lesson-01"
+# DERIVED from the registry, never hardcoded -- a UI check pointed at a
+# directory nobody builds silently stops testing anything.
+from xat_practice.bundle import out_dir as _out_dir  # noqa: E402
+from xat_practice.registry import LESSONS as _LESSONS  # noqa: E402
+
+BUNDLE = _out_dir(_LESSONS[0].lesson_id)
 
 REQUIRED = ["index.html", "lesson.js", "paper.json", "answerkey.json"]
 

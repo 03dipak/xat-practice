@@ -29,6 +29,8 @@ from pathlib import Path
 import pytest
 
 from xat_practice import cli
+from xat_practice.registry import LESSONS, items_written
+from xat_practice.syllabus import SUBTOPICS
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -70,7 +72,7 @@ def test_levels_prints_the_derived_level_and_its_drivers(capsys):
 def test_build_writes_the_lesson_and_names_the_rungs(capsys):
     assert cli.cmd_build(None) == 0
     out = capsys.readouterr().out
-    assert "built out/lesson-01/" in out
+    assert "built out/lesson-01-simple-interest/" in out
     for item_id in ("L1-F", "L1-E", "L1-M", "L1-H"):
         assert item_id in out
 
@@ -259,7 +261,11 @@ def test_gates_exits_non_zero_and_names_the_refused_item(monkeypatch, capsys):
 
     wrong = dataclasses.replace(lesson1.LESSON[0], key_index=1)
     assert wrong.key_index != 0
-    monkeypatch.setattr(lesson1, "LESSON", (wrong,))
+    # MEASURED 2026-10-02: this patched `lesson1.LESSON`, which stopped having any
+    # effect the moment `cmd_gates` began reading the registry -- so the planted
+    # wrong key was never seen and the test would have passed FOR THE WRONG
+    # REASON. Patch the seam the verb actually calls.
+    monkeypatch.setattr(cli, "all_items", lambda: [wrong])
 
     assert cli.cmd_gates(None) == 1, "a refused item must make the verb exit non-zero"
     out = capsys.readouterr().out
@@ -289,7 +295,7 @@ def test_gates_names_the_gate_that_caught_a_value_label_mismatch(monkeypatch,
 
     mismatched = dataclasses.replace(
         lesson1.LESSON[0], option_values=("200", "220", "100", "1200", "1250"))
-    monkeypatch.setattr(lesson1, "LESSON", (mismatched,))
+    monkeypatch.setattr(cli, "all_items", lambda: [mismatched])
 
     assert cli.cmd_gates(None) == 1
     out = capsys.readouterr().out
@@ -318,9 +324,123 @@ def test_serve_prints_its_url_and_stops_cleanly_on_ctrl_c(monkeypatch, capsys):
             self.closed = True
 
     monkeypatch.setattr(cli, "make_server", _Fake)
-    args = argparse.Namespace(lesson=str(ROOT / "out" / "lesson-01"), port=8123)
+    from xat_practice.bundle import out_dir as _od
+    args = argparse.Namespace(lesson=str(_od(LESSONS[0].lesson_id)), port=8123)
     assert cli.cmd_serve(args) == 0
     out = capsys.readouterr().out
     assert "http://127.0.0.1:8123/" in out
     assert "ctrl-c to stop" in out
     assert made == [8123], "the server must be built on the requested port"
+
+
+# ---------------------------------------------------------------------------
+# the registry: one place that knows what is written
+# ---------------------------------------------------------------------------
+# MEASURED 2026-10-02: there were 11 references to `lesson1` across 6 files and
+# `bundle.OUT_DIR` was a hardcoded `out/lesson-01`, so a second lesson meant
+# editing six files and there was nowhere to build it. And `xat-practice
+# weightage` printed `written: 4` -- the ITEM count -- between two SUBTOPIC
+# counts, on a project with 40 subtopics. It read as "four topics done".
+
+def test_the_registry_reports_subtopics_and_items_separately():
+    """The falsifying input for the bug: 4 items is ONE subtopic."""
+    from xat_practice.registry import subtopics_written
+
+    subs = subtopics_written()
+    assert items_written() == sum(len(x.items) for x in LESSONS)
+    assert len(subs) <= items_written(), (
+        "a lesson covers at most one subtopic, so subtopics can never exceed items"
+    )
+    # every written subtopic is a REAL subtopic in the syllabus
+
+    from xat_practice.syllabus import SUBTOPICS as _S
+
+    known = {st.id for st in _S}
+    assert subs <= known, f"registry names unknown subtopics: {subs - known}"
+
+
+def test_weightage_no_longer_conflates_items_with_subtopics(capsys):
+    """THE regression test for the reported number.
+
+    It must print BOTH, and it must print the item count under a name that says
+    it is items. A line reading `written: 4` next to `subtopics trained: 40` is
+    the defect."""
+    assert cli.cmd_weightage(None) == 0
+    out = capsys.readouterr().out
+    assert "subtopics trained: 40" in out
+    assert f"items written: {items_written()}" in out, (
+        "the item count must be labelled as items"
+    )
+    bare = [ln for ln in out.splitlines()
+            if "written:" in ln and "items written" not in ln]
+    assert not bare or "written: 1 " in bare[0], (
+        f"a bare 'written: N' is ambiguous: {bare}"
+    )
+    assert "1/40 subtopics = 2.5%" in out, (
+        "the coverage figure must be printed with its denominator"
+    )
+
+
+def test_gates_and_levels_report_over_every_lesson(capsys):
+    """A verb that kept reporting Lesson 1 after Lesson 2 existed would quietly
+    test less than it claims -- the coverage-floor defect with a green tick."""
+    assert cli.cmd_gates(None) == 0
+    out = capsys.readouterr().out
+    assert f"population: {items_written()} items across {len(LESSONS)} lesson(s)" in out
+    assert all(x.lesson_id in out for x in LESSONS), (
+        "every registered lesson must be named in the population line"
+    )
+    capsys.readouterr()
+    assert cli.cmd_levels(None) == 0
+    assert "L1-F" in capsys.readouterr().out
+
+
+def test_the_registry_refuses_a_lesson_covering_two_subtopics():
+    """Proved by construction, then checked: the invariant that makes 'subtopics
+    written' a COUNT rather than a sum with a duplicate in it."""
+    import dataclasses
+
+    from xat_practice import lesson1 as L1
+    from xat_practice import registry as R
+
+    other = next(x for x in SUBTOPICS if x.id != L1.SUBTOPIC)
+    borrowed = dataclasses.replace(L1.EASY, subtopic_id=other.id)
+    bad = R.Lesson(
+        lesson_id="bad", subtopic_id="whatever",
+        items=(L1.FOUNDATION, borrowed),
+        solutions={i.id: L1.SOLUTIONS[i.id] for i in (L1.FOUNDATION, borrowed)},
+        teach=L1.TEACH,
+    )
+    original = R.LESSONS
+    try:
+        R.LESSONS = (bad,)
+        with pytest.raises(AssertionError, match="ONE subtopic"):
+            R.assert_registry_is_honest()
+    finally:
+        R.LESSONS = original
+
+
+def test_the_registry_refuses_a_second_lesson_on_one_subtopic():
+    import dataclasses
+
+    from xat_practice import registry as R
+
+    twin = R.LESSONS[0]
+    clone = dataclasses.replace(twin, lesson_id="twin")
+    original = R.LESSONS
+    try:
+        R.LESSONS = (twin, clone)
+        with pytest.raises(AssertionError, match="double-count"):
+            R.assert_registry_is_honest()
+    finally:
+        R.LESSONS = original
+
+
+def test_the_bundle_directory_is_derived_from_the_lesson_id():
+    """MEASURED: `out/lesson-01` was hardcoded, so a second lesson had nowhere to
+    live and `--lesson` defaulted to a directory that might not be the one you
+    meant."""
+    from xat_practice.bundle import out_dir
+
+    assert out_dir("lesson-01-simple-interest").name == "lesson-01-simple-interest"
+    assert out_dir("a").name == "a", "the path must come from the id, not a constant"

@@ -40,7 +40,23 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PROBE = ROOT / "tools" / "ui_probe.html"
-BUNDLE = ROOT / "out" / "lesson-01"
+#: The bundle under test. DERIVED, never hardcoded.
+#:
+#: MEASURED 2026-10-02: this was `out/lesson-01`, which was correct only while
+#: there was exactly one lesson and wrong the moment there were two. A UI check
+#: pointed at a directory nobody builds is a UI check that silently stops testing
+#: anything, so the path comes from the registry.
+def _bundle_dir():
+    import sys as _sys
+
+    _sys.path.insert(0, str(ROOT / "src"))
+    from xat_practice.bundle import out_dir
+    from xat_practice.registry import LESSONS
+
+    return out_dir(LESSONS[0].lesson_id)
+
+
+BUNDLE = _bundle_dir()
 
 
 def find_browser() -> str | None:
