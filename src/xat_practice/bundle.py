@@ -75,6 +75,9 @@ STYLE = """\
   h1 { font-size: 21px; margin: 0 0 4px; }
   .sub { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
   .rungs { display: flex; gap: 6px; margin-bottom: 22px; flex-wrap: wrap; }
+  .back { display: inline-block; font-size: 13px; color: var(--ink);
+    text-decoration: none; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+  .back:hover { border-bottom-color: var(--ink); }
   .rung {
     flex: 1 1 90px; padding: 9px 8px; border: 1px solid var(--line);
     border-radius: 7px; background: #fff; font-size: 11px; letter-spacing: .07em;
@@ -186,14 +189,15 @@ HTML = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>XAT Practise &middot; Lesson 1 &middot; Simple Interest</title>
+<title>XAT Practice</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <main>
-  <h1>Lesson 1 &middot; Simple Interest</h1>
+  <h1>XAT Practice</h1>
   <div class="sub">One subtopic, four levels &mdash; foundation, easy, medium,
     hard. Nothing here is scored; everything here is meant to be understood.</div>
+  <a class="back" id="back" data-home="../" href="../">&larr; all topics</a>
   <div class="rungs" id="rungs"></div>
   <div id="stage"></div>
 </main>
@@ -226,7 +230,9 @@ JS = r"""
 let ORDER = [];
 let LABEL = {};
 const state = { i: 0, commit: null, pick: null, meta: null, build: null,
-                teach: {}, total: 0, title: '', subtopicLabel: '', log: [] };
+                teach: {}, total: 0, title: '', topicLabel: '',
+                answerHint: 'Your answer, in any form',
+                subtopicLabel: '', log: [] };
 let paperCache = null;
 
 // paper.json holds ONLY what the learner is allowed to see: the stem, the
@@ -256,6 +262,8 @@ async function loadPaper() {
   state.teach = all.teach || {};
   state.total = all.items.length;
   state.title = all.title || '';
+  state.topicLabel = all.topic_label || '';
+  state.answerHint = all.answer_hint || 'Your answer, in any form';
   state.subtopicLabel = all.subtopic_label || '';
   // The ladder and its labels come from the paper, not from this file.
   ORDER = all.items.map(i => i.id);
@@ -292,7 +300,13 @@ async function loadKey(id) {
 // filled in -- the learner would answer a question they never committed to.
 function rungBar() {
   document.getElementById('rungs').innerHTML = ORDER.map((id, n) => {
-    const cls = n === state.i ? 'on' : (n < state.i ? 'done' : '');
+    // "done" means ATTEMPTED, not "earlier in the queue".
+    //
+    // MEASURED 2026-10-02: the condition was `n < state.i`, so clicking HARD first
+    // -- which is exactly what the level tabs invite, and exactly what the owner
+    // asked for -- lit FOUNDATION, EASY and MEDIUM solid green. The product's only
+    // self-report then says the learner did three questions they never attempted.
+    const cls = n === state.i ? 'on' : (state.log[n] ? 'done' : '');
     const cur = n === state.i ? ' aria-current="true"' : '';
     return `<button type="button" class="rung ${cls}" data-i="${n}"${cur}>`
       + `${LABEL[id]}</button>`;
@@ -419,7 +433,18 @@ async function render() {
       <div id="commitBox">
         <p class="lbl"><strong>Write your answer before you see the options.</strong>
           Never marked, never leaves your machine.</p>
-        <textarea id="freeAnswer" placeholder="e.g. SI = P x R x T / 100 = ..."></textarea>
+        <!-- MEASURED 2026-10-02: this was the literal
+             "e.g. SI = P x R x T / 100 = ..." on EVERY lesson, so the Geometry page
+             told a learner to write down simple interest before answering a question
+             about the area of a triangle. It is a literal, not a field; now it
+             comes from the paper's own answer_hint field.
+
+             NO BACKTICKS IN THIS COMMENT. This HTML sits inside a JavaScript
+             TEMPLATE LITERAL, so one backtick here closes the string and
+             node --check reports "SyntaxError: Unexpected identifier" -- the exact
+             failure that shipped lesson.js broken for a whole wave past 161 passing
+             tests, and the node --check gate exists to catch it. -->
+        <textarea id="freeAnswer" placeholder="${esc(state.answerHint)}"></textarea>
         <div class="quad" style="margin-top:12px">
           <div class="qcell" id="csure"><div class="t">I am sure</div>
             <button class="ghost" data-conf="sure">Sure</button></div>
@@ -431,14 +456,26 @@ async function render() {
       </div>
 
       <div id="optBox" class="hidden"></div>
+      <div class="note" id="pickNote"></div>
 
       <div id="result" class="hidden"></div>
     </div>`;
 
+  // The heading and the BROWSER TAB name the topic.
+  //
+  // MEASURED 2026-10-02: `<title>` was the literal "XAT Practise · Lesson 1 ·
+  // Simple Interest" in the HTML, so the Geometry page's tab claimed to be Simple
+  // Interest, and the <h1> was "02" -- derived from `lesson_id.split("-")[1]`, which
+  // is a directory name, not a name. A learner who clicked "Geometry & Mensuration
+  // -> Open" arrived at a page called "02".
   const head = document.querySelector('h1');
   const sub = document.querySelector('.sub');
-  if (head && state.title) head.textContent = state.title;
-  if (sub && state.subtopicLabel) sub.textContent = state.subtopicLabel;
+  if (head) head.textContent = state.topicLabel || state.subtopicLabel || 'XAT Practice';
+  if (sub) sub.textContent = state.subtopicLabel || '';
+  document.title = `XAT Practice · ${state.topicLabel || ''}`
+    + (state.subtopicLabel ? ` · ${state.subtopicLabel}` : '');
+  const back = document.getElementById('back');
+  if (back) back.href = back.getAttribute('data-home') || '../';
 
   // The teaching card, on question 1 only. It is NOT on later rungs: the point is
   // to read it once before the ladder starts, and repeating it four times is the
@@ -466,6 +503,15 @@ async function render() {
   });
 
   document.getElementById('reveal').onclick = () => {
+    // SCROLL THE NEW CONTENT INTO VIEW. MEASURED 2026-10-02: the options render
+    // roughly a viewport below the fold, and the post-reveal and post-reveal-before
+    // screenshots were BYTE-IDENTICAL -- so clicking "Show the options" did nothing
+    // visible and the button read as broken. The barrier is real; the event was
+    // invisible.
+    setTimeout(() => {
+      const box = document.getElementById('optBox');
+      if (box) box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }, 30);
     // THE OPTIONS ARE BUILT HERE, not in render(). MEASURED 2026-10-02: the
     // first version rendered them into a hidden <div id="optBox">, so they were
     // in the DOM before the learner committed -- hidden, but present, and one
@@ -504,6 +550,8 @@ async function check() {
     else if (n === state.pick) el.classList.add('wrong');
   });
   document.getElementById('optBox').classList.add('hidden');
+  const pickNote = document.getElementById('pickNote');
+  if (pickNote) { pickNote.textContent = ''; pickNote.classList.add('hidden'); }
 
   const right = state.pick === meta.k;
   const cell = state.commit === 'sure'
@@ -539,11 +587,19 @@ function next() {
 
 function finish() {
   const rows = state.log.filter(Boolean);
+  // Honest scope. MEASURED 2026-10-02: this said "You worked through every level of
+  // this subtopic" unconditionally, and then listed one row. The level tabs made
+  // that reachable in a single click, so the summary screen -- the one screen that
+  // reports on YOUR session -- was the one making an unverified claim.
+  const attempted = rows;
   const wasSure = rows.filter(r => r.commit === 'sure' && !r.right);
   document.getElementById('stage').innerHTML = `
     <div class="card">
       <div class="qno">Lesson complete</div>
-      <div class="stem">You worked through every level of this subtopic.</div>
+      <div class="stem">${attempted.length === state.total
+        ? 'You worked through every level of this subtopic.'
+        : `You attempted ${attempted.length} of ${state.total} levels.`
+          + ' The rest are still there — click a tab above to go back to one.'}</div>
       <div class="qcell on" style="margin-top:8px"><div class="t">Where you landed</div>
         ${rows.length ? rows.map(r => `<div style="margin-top:6px">
           <strong>${esc(r.level)}</strong> &middot;
@@ -551,16 +607,18 @@ function finish() {
           &mdash; ${esc(r.cell)}</div>`).join('')
           : '<div style="margin-top:6px">Nothing was recorded.</div>'}
       </div>
-      <p>The ladder is the point. The hard question's only extra step is the
-      one the foundation question isolated &mdash; so if the last one felt
-      arbitrary, the first one did not land, and redoing it is worth more than
-      another hard question.</p>
+      ${attempted.length >= 2 ? `<p>The ladder is the point. The hard question's
+      only extra step is the one the foundation question isolated &mdash; so if the
+      last one felt arbitrary, the first one did not land, and redoing it is worth
+      more than another hard question.</p>`
+        : '<p>One question is a data point, not a verdict. Take another level '
+          + 'above to see whether the difficulty is the topic or the rung.</p>'}
       <p>Your strongest signal is not your score. It is
       <strong>the one you were <em>sure</em> about and got wrong</strong>:
       that is a misconception with a name, and it is the one to fix tonight.
       ${wasSure.length
         ? `<strong>That is ${wasSure.map(r => r.level.toLowerCase()).join(' and ')}.</strong>`
-        : '<strong>You were not sure-and-wrong on any of the four</strong>'
+        : '<strong>You were not sure-and-wrong on any of those</strong>'
           + ' &mdash; so tonight the fix is retrieval, not a wrong idea.'}
       </p>
     </div>`;
@@ -579,8 +637,21 @@ document.addEventListener('click', e => {
     document.querySelectorAll('.opt').forEach(x => x.classList.remove('sel'));
     o.classList.add('sel');
   }
-  if (e.target.id === 'check' &&
-      document.querySelector('.opt.sel')) check();
+  if (e.target.id === 'check') {
+    // MEASURED 2026-10-02: with nothing selected this was a silent no-op -- no
+    // verdict, no message, nothing moved -- at the exact moment the learner has
+    // maximum intent. A button that does nothing on click is worse than a disabled
+    // one, because it looks broken rather than unavailable.
+    if (document.querySelector('.opt.sel')) {
+      check();
+    } else {
+      const note = document.getElementById('pickNote');
+      if (note) {
+        note.textContent = 'Choose an option first — there is no verdict to show '
+          + 'until you have picked one.';
+      }
+    }
+  }
 });
 
 document.getElementById('foot').innerHTML =
@@ -634,10 +705,16 @@ def build_lesson(lesson_id: str, items: tuple[Item, ...],
                                    for r in refused)
         )
 
+    from .syllabus import TOPICS as _topics
     from .syllabus import subtopics as _subs
 
+    sub = _subs()[items[0].subtopic_id]
+    subtopic_label = sub.name
+    topic_label = next((t.name for t in _topics if t.id == sub.topic_id),
+                       sub.topic_id)
     lesson_title = lesson_id.split("-")[1].replace("-", " ").title()
-    (subtopic_label,) = [_subs()[items[0].subtopic_id].name]
+    # A placeholder in the topic's OWN terms, not a hardcoded formula.
+    answer_hint = f"e.g. for {subtopic_label}, your working — numbers are fine"
 
     paper: dict[str, object] = {
         "lesson_id": lesson_id,
@@ -646,7 +723,12 @@ def build_lesson(lesson_id: str, items: tuple[Item, ...],
         # - Simple Interest" written into it, so every lesson after the first
         # would have been titled with the first one's name.
         "title": lesson_title,
+        "topic_label": topic_label,
         "subtopic_label": subtopic_label,
+        # The free-answer box's placeholder. It used to be the literal simple
+        # interest formula on every lesson, so the Geometry page asked a learner to
+        # write down SI before a question about a triangle's area.
+        "answer_hint": answer_hint,
         # D18: TEACH THEN ASK. MEASURED 2026-10-02 by `viewer`: the formula first
         # reached the screen only AFTER question 1 was answered, so a learner who
         # did not know the formula could not learn it here. This block is rendered

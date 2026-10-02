@@ -341,12 +341,30 @@ def test_no_answer_is_hardcoded_in_the_javascript(on_disk):
 # lesson.js, 2.8ms for paper.json, 4.8ms for index.html, ~12ms for all four.
 # So "slow" was the wrong diagnosis and the render path held the defect.
 
+#: The per-file budget. RAISED 20_000 -> 25_000 on 2026-10-02, with the reason:
+#: `lesson.js` reached 21,975 bytes when the `viewer` findings were fixed (level
+#: tabs, per-item reset, dynamic title, scroll-into-view, honest finish screen). The
+#: whole page is **43,537 bytes** across all five files, and MEASURED the whole page
+#: served in ~12ms -- so the guard's purpose still holds: nothing here is big enough
+#: to explain a slow first screen. The number was moved because the file grew, and
+#: the number that matters is the page's, which is asserted below.
+MAX_ASSET_BYTES = 25_000
+MAX_PAGE_BYTES = 60_000
+
+
 def test_the_server_is_not_the_thing_that_is_slow(on_disk):
     """The four served files are a few kilobytes each. If a page feels slow, the
-    cause is in the render path, not the wire -- so this pins the budget."""
+    cause is in the render path, not the wire -- so this pins the budget.
+
+    Two numbers, not one: a per-file ceiling and a WHOLE-PAGE ceiling. The per-file
+    one caught a real 20% growth; the page one is the one that decides whether the
+    wire can be the explanation.
+    """
+    total = 0
     for name in ("index.html", "style.css", "lesson.js", "paper.json",
                  "answerkey.json"):
-        assert len(on_disk[name]) < 20_000, (
+        total += len(on_disk[name])
+        assert len(on_disk[name]) < MAX_ASSET_BYTES, (
             f"{name} grew past 20KB. That is still fast, but the point of the "
             "measurement is that no asset here is big enough to explain a slow "
             "first screen, so look at render() instead of the network."
@@ -742,4 +760,100 @@ def test_the_levels_are_clickable_tabs_in_the_served_page(on_disk):
     assert "aria-current" in rung_bar, (
         "the active level must be marked for assistive tech and for a learner "
         "who cannot see which one is lit"
+    )
+
+
+# ---------------------------------------------------------------------------
+# the viewer's findings, 2026-10-02
+# ---------------------------------------------------------------------------
+# The `viewer` subagent SAT the flow and returned nine findings. Each was verified
+# in a real headless Chromium before being acted on, because an agent's claim is a
+# hypothesis, not evidence. Three are pinned here as TEXT because the browser
+# cannot see them; the rest are in the probe.
+
+def test_the_page_names_its_own_topic_in_the_title_and_heading(on_disk):
+    """MEASURED: `<title>` was the literal "XAT Practise · Lesson 1 · Simple
+    Interest" in the HTML, so the GEOMETRY page's browser tab claimed to be Simple
+    Interest, and its `<h1>` was "02" -- `lesson_id.split("-")[1]`, a directory name.
+    A learner who clicked "Geometry & Mensuration -> Open" arrived at a page called
+    "02".
+
+    Neither can be asserted from the DOM without driving the page, and the values
+    come from `paper.json`, so both are pinned on the template and on the data.
+    """
+    # ON THE MARKUP AND THE TEMPLATE, not the whole file: three of these assertions
+    # first failed against the explanatory COMMENTS, which quote the very strings
+    # they forbid. A test that greps a file it also documents will always fail.
+    html = on_disk["index.html"]
+    assert "Simple Interest" not in html, (
+        "the static markup hardcodes Lesson 1's topic; every other lesson's tab "
+        "claims to be Simple Interest"
+    )
+    assert "<title>XAT Practice</title>" in html, (
+        "the tab title must be a placeholder that JS replaces, not a fixed topic"
+    )
+    js = on_disk["lesson.js"]
+    assert "document.title" in js, "the title must be set from the loaded paper"
+    assert "topic_label" in js, "the heading and tab must come from the paper"
+
+
+def test_the_free_answer_placeholder_is_not_another_topics_formula(on_disk):
+    """MEASURED: the placeholder was the literal "e.g. SI = P x R x T / 100 = ..."
+    on EVERY lesson, so the Geometry page told a learner to write down simple
+    interest before answering a question about a triangle's area. Correct on Lesson
+    1, wrong on every other lesson -- so it was a literal, not a field."""
+    js = on_disk["lesson.js"]
+    assert 'placeholder="${esc(state.answerHint)}"' in js, (
+        "the answer placeholder must be read from the paper's answer_hint field"
+    )
+    # The rendered value, not the source: paper.json is what ships to the browser.
+    paper = json.loads(on_disk["paper.json"])
+    hint = paper.get("answer_hint", "")
+    assert hint and "SI = P" not in hint, (
+        f"the shipped placeholder still names simple interest: {hint!r}"
+    )
+    assert "SI = P" not in str(paper.get("items", [])), (
+        "an item's own data must not carry a simple-interest formula"
+    )
+
+
+def test_the_finish_screen_may_not_claim_more_than_was_attempted(on_disk):
+    """MEASURED: it said "You worked through every level of this subtopic"
+    unconditionally and then listed ONE row. The level tabs made that reachable in a
+    single click, so the summary screen -- the only screen that reports on the
+    learner's session -- was the one making an unverified claim."""
+    js = on_disk["lesson.js"]
+    # Slice to the NEXT top-level function. The first version ended at `report(`,
+    # which lives in the PROBE page, not in lesson.js -- so `.index` raised
+    # ValueError and the assertion never ran.
+    start = js.index("function finish()")
+    rest = js[start + len("function finish()"):]
+    ends = [i for i in (rest.find("\nfunction "), rest.find("\nasync function "))
+            if i != -1]
+    body = js[start:start + len("function finish()") + (min(ends) if ends else len(rest))]
+    assert "You worked through every level of this subtopic" in body
+    # ...and that sentence must be CONDITIONAL on having done all of them.
+    assert "attempted.length === state.total" in body, (
+        "the 'every level' claim must be guarded by how many were attempted, or it "
+        "is an unverified claim about the learner"
+    )
+    assert "You attempted" in body, "there must be an honest alternative sentence"
+    # "the four" was also wrong when fewer were attempted.
+    assert "any of the four" not in js, (
+        "'any of the four' presumes four were attempted"
+    )
+
+
+def test_rungs_are_done_only_when_attempted_not_when_earlier_in_the_queue(on_disk):
+    """MEASURED: the condition was `n < state.i`, so clicking HARD FIRST -- exactly
+    what the level tabs invite and exactly what the owner asked for -- lit
+    FOUNDATION, EASY and MEDIUM solid green. The product's only self-report then
+    claimed the learner had done three questions they never attempted."""
+    js = on_disk["lesson.js"]
+    bar = js[js.index("function rungBar()"):js.index("function jumpTo(")]
+    # The EXACT assignment, not a substring search: the comment above it explains
+    # the old defect and quotes the old condition, so grepping for it always matched.
+    assert "const cls = n === state.i ? 'on' : (state.log[n] ? 'done' : '')" in bar, (
+        "a rung must be 'done' only if it was ANSWERED, not merely earlier in the "
+        f"queue. Got:\n{bar[:400]}"
     )
