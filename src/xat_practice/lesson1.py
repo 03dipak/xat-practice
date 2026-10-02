@@ -116,15 +116,15 @@ EASY = Item(
     stratum=Stratum.QUANT,
     stem="Rs 10,000 is invested at 5% per annum simple interest. What is the "
          "amount owed after 2 years?",
-    options=("Rs 11,000", "Rs 1,000", "Rs 10,250", "Rs 11,025", "Rs 10,200"),
+    options=("Rs 1,000", "Rs 11,000", "Rs 10,250", "Rs 11,025", "Rs 10,200"),
     option_values=(
-        "11000",
         "1000",
+        "11000",
         "10250",
         "11025",
         "10200",
     ),
-    key_index=0,
+    key_index=1,
     derivation="10000 + 10000*5*2/100",
     distractors=(
         Distractor(
@@ -173,15 +173,15 @@ MEDIUM = Item(
     stem="A sum earns simple interest of Rs 1,440 at 8% per annum for 3 years. "
          "Another sum earns simple interest of Rs 2,160 at 12% per annum for "
          "2 years. What is the ratio of the first sum to the second?",
-    options=("2 : 3", "8 : 9", "1 : 2", "3 : 2", "4 : 3"),
+    options=("8 : 9", "1 : 2", "2 : 3", "3 : 2", "4 : 3"),
     option_values=(
-        "2/3",
         "8/9",
         "1/2",
+        "2/3",
         "3/2",
         "4/3",
     ),
-    key_index=0,
+    key_index=2,
     derivation="(1440*100/(8*3)) / (2160*100/(12*2))",
     distractors=(
         Distractor(
@@ -232,15 +232,15 @@ HARD = Item(
     stem="A debt of Rs 12,000 is repaid in two equal annual instalments, and "
          "simple interest at 10% per annum is charged for the 2 years on the "
          "whole amount. The total repaid is:",
-    options=("Rs 14,400", "Rs 12,000", "Rs 9,600", "Rs 14,700", "Rs 7,200"),
+    options=("Rs 12,000", "Rs 9,600", "Rs 7,200", "Rs 14,400", "Rs 14,700"),
     option_values=(
-        "14400",
         "12000",
         "9600",
-        "14700",
         "7200",
+        "14400",
+        "14700",
     ),
-    key_index=0,
+    key_index=3,
     derivation="12000 + 12000*10*2/100",
     distractors=(
         Distractor(

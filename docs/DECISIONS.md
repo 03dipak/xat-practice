@@ -733,3 +733,67 @@ The screenshots were the only reason either was found. `test_the_probe_page_...`
 now requires `--shot-dir`, and every stage is photographed from the real page
 with the real stylesheet, because the probe page's own screenshot came back as
 unstyled text: a fine DOM and a useless visual record.
+
+---
+
+## 7. D16 — G15: the key POSITION must not be the answer
+
+**Ruled 2026-10-02, from the owner's report.** "Here all question answer A,
+which is not good." Correct, and the finding underneath it was the worst of the
+project's life.
+
+All four of Lesson 1's keys sat at index 0. A learner who answered **A** on
+every question scored **4 of 4** — `+4.00` of a possible `+4.00`, full marks,
+having read nothing. Measured, on the real marking scheme:
+
+```
+always answer A: 4/4 correct   XAT score +4.00 of a possible 4.00
+always answer B: 0/4 correct   XAT score -1.00
+```
+
+**All fourteen existing gates passed it.** `G2` checks the key is *in range*.
+Nothing in the module checked where it *sat*. Every gate looks at one item, or at
+a level mix; not one asked the only question that matters about a set of keys —
+**can the position alone score?**
+
+### Why it survived, which is the part worth keeping
+
+Nobody chose it. Every author wrote the correct answer first and listed the
+distractors after it. Four items, one habit, one result.
+
+And it was not confined to the lesson. **Every paper fixture in
+`tests/test_gates.py` put its key at the same index too**, so `always answer B`
+scored 20 of 20 — living inside the very tests that were meant to catch it. The
+defect was in the *authoring convention*, not in one file, which is the only
+reason a gate was needed rather than a fix.
+
+### The rule
+
+`G15_key_not_predictable` scores the best always-the-same-letter strategy with
+the real marking scheme and refuses if it is worth more than **10% of the marks
+on the paper**.
+
+The 10% is not a preference. It comes from a number already in this module:
+**random guessing on five options at −0.25 has expected value exactly 0.0**
+(`+1/5 + 4/5×(−0.25)`, `guess_ev_report`, D3). So a paper where picking one
+letter without reading is worth more than a tenth of the marks **pays a learner
+for not retrieving** — which is the single thing this product exists to prevent.
+
+It is not set to zero. XLRI publishes no key distribution, and 5–6 keys per
+letter across 28 items is ordinary; a ceiling of zero would refuse real papers.
+It is set so that a four-item lesson must have a near-distinct spread, which is
+what a four-item lesson needs.
+
+| set | best fixed letter | before | after |
+|---|---|---|---|
+| Lesson 1 (4 items) | A | **+4.00** of 4.00 | **+0.25** of 4.00 |
+
+Keys now sit at **0, 1, 2, 3**. `test_a_fixed_letter_cannot_score_the_paper` is
+written against the shipped defect and fails if it is ever admitted; reverting
+Lesson 1's key positions makes **five** tests fail, including
+`test_lesson1_every_key_is_recomputed`.
+
+**Ordering is normative.** `G15` runs after the per-item loop and after `G11`,
+because it must judge the set that will actually be *served*. Judging the full
+input instead would pass a paper that `G11` had already thinned into a
+fixed-letter remainder.

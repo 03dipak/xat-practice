@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import pytest
 
+from xat_practice import lesson1
 from xat_practice.gates import GATE_IDS, _stem_fingerprint, run
 from xat_practice.items import (
     LEVEL_ORDER,
@@ -354,18 +355,44 @@ def test_G13_key_leaking_stem_refused():
     assert any(r.gate == "G13_no_leak" for r in res.refusals)
 
 
+def _rotate_key(item: Item, to_index: int) -> Item:
+    """Move the key to `to_index`, keeping `options` and `option_values` in step.
+
+    The rotation is the whole point: `key_index` alone can be moved without
+    touching the options, but then the key no longer names the value the solver
+    derives and G5 refuses the item. Rotating both together produces an item that
+    is CORRECT at a chosen position, which is what a real paper is.
+    """
+    import dataclasses
+
+    n = len(item.options)
+    to_index %= n
+    src = (item.key_index - to_index) % n
+    opts = item.options[src:] + item.options[:src]
+    vals = item.option_values[src:] + item.option_values[:src]
+    return dataclasses.replace(item, options=opts, option_values=vals,
+                               key_index=to_index)
+
+
 def at_level(level: Level, i: int) -> Item:
     """An item whose STRUCTURE is the recipe for `level`. This is the only
-    sanctioned way to build a fixture at a target level."""
+    sanctioned way to build a fixture at a target level.
+
+    The key is ROTATED to `1 + i` so a fixture set has the key spread of a real
+    paper. MEASURED 2026-10-02: every paper fixture in this file put the key at
+    the same index, so `always answer B` scored 20 of 20 -- the identical defect
+    Lesson 1 shipped, living in the very tests meant to catch it. `G15` refuses
+    such a set, which is correct, and it meant these fixtures had to become what
+    a real paper looks like."""
     r = LEVEL_RECIPES[level]
-    return quant_item(
+    return _rotate_key(quant_item(
         id=f"{level.value}-{i}",
         stem=_DISTINCT_STEMS[i],
         derivation_steps=int(r["derivation_steps"]),      # type: ignore[call-overload]
         needs_substitution=bool(r["needs_substitution"]), # type: ignore[call-overload]
         insight_required=bool(r["insight_required"]),     # type: ignore[call-overload]
         distractors=recipe(level),
-    )
+    ), 1 + i)
 
 
 def test_every_level_is_reachable_from_its_recipe():
@@ -483,6 +510,10 @@ def test_every_gate_id_is_reachable():
     # G11: over-quota. Ten MEDIUM recipes against a quota of 4. The floor is 8,
     # so a 3-item version of this call passed for the wrong reason.
     fire(*[at_level(Level.MEDIUM, i) for i in range(10)])
+    # G15: every key in the same position. MEASURED 2026-10-02: Lesson 1 was
+    # exactly this and all fourteen other gates passed it -- 'always A' scored
+    # 4 of 4. The reachability input is the defect that shipped.
+    fire(*[_rotate_key(at_level(LEVEL_ORDER[i], i), 0) for i in range(4)])
 
     missing = set(GATE_IDS) - fired
     assert not missing, f"unreachable gates: {sorted(missing)}"
@@ -632,3 +663,101 @@ def test_refusals_never_mutate_admitted():
     assert res.admitted == []
     assert all(r.item_id == "q1" for r in res.refusals)
 
+
+
+# ---------------------------------------------------------------------------
+# G15 -- the key position must not be the answer
+# ---------------------------------------------------------------------------
+# MEASURED 2026-10-02, from the owner: "here all question answer A, which is not
+# good." All four of Lesson 1's keys sat at index 0. Answering A four times
+# scored 4 of 4 -- +4.00 of a possible +4.00, full marks, having read nothing.
+# Every one of the fourteen existing gates passed it: G2 checks the key is IN
+# RANGE, and nothing in the module asked where it SAT.
+
+def test_a_fixed_letter_cannot_score_the_paper():
+    """The exploit itself, as a test.
+
+    Written first and against the defect that shipped, not derived from the
+    gate's own arithmetic."""
+    from xat_practice.gates import fixed_letter_best
+
+    exploited = [_rotate_key(at_level(LEVEL_ORDER[i], i), 0)
+                 for i in range(4)]
+    letter, score, hits = fixed_letter_best(exploited)
+    assert letter == 0
+    assert hits == 4
+    assert score == pytest.approx(4.0), "the exploit must still score 4.0"
+
+    res = run(exploited)
+    assert any(r.gate == "G15_key_not_predictable" for r in res.refusals), (
+        "a paper where one letter scores full marks was ADMITTED"
+    )
+    assert res.admitted == [], (
+        "G15 refused but the items were still admitted. A refusal that does not "
+        "remove the item is a comment."
+    )
+
+
+def test_the_lesson_is_no_longer_exploitable():
+    """And the fix, on the real lesson."""
+    from xat_practice.gates import fixed_letter_best
+
+    _letter, score, hits = fixed_letter_best(list(lesson1.LESSON))
+    assert hits < 2, (
+        f"one letter is still the answer to {hits} of 4 questions (positions "
+        f"{[it.key_index for it in lesson1.LESSON]})"
+    )
+    assert score < 0.4, f"best fixed letter still scores {score:+.2f}"
+
+
+def test_the_ceiling_is_derived_from_random_guessing_being_worth_nothing():
+    """The threshold has a reason, and the reason is a number in this module.
+
+    Random guessing on five options at -0.25 has EV exactly 0.0 (D3,
+    `test_guessing_5_options_is_exactly_score_neutral`). So a fixed-letter
+    strategy worth more than 10% of the marks is paying a learner for not
+    retrieving, which is the one thing this product exists to prevent."""
+    from xat_practice.gates import KEY_EXPLOIT_CEILING
+
+    assert KEY_EXPLOIT_CEILING == 0.10
+    assert KEY_EXPLOIT_CEILING > 0, (
+        "a ceiling of zero would refuse any real XAT key distribution; XLRI "
+        "does not publish one, and 5-6 keys per letter over 28 items is normal"
+    )
+
+
+def test_g15_is_scored_with_the_real_marking_scheme():
+    """`fixed_letter_best` is arithmetic, so it gets its own arithmetic test.
+
+    MEASURED on the shipped defect: 4 hits at -0.25 for the other 0 is +4.00.
+    A gate that estimated this would be a gate that could be fooled by a
+    rounding choice."""
+    from xat_practice.gates import fixed_letter_best
+
+    # four items, keys A,A,B,B
+    items = [quant_item(id=f"m{i}", key_index=i % 2) for i in range(4)]
+    letter, score, hits = fixed_letter_best(items)
+    assert letter == 0 and hits == 2
+    assert score == pytest.approx(2 * 1.0 + 2 * -0.25)
+
+
+def test_g15_does_not_fire_on_a_normal_key_spread():
+    """A guard that fires on everything is not a guard."""
+    items = [quant_item(id=f"n{i}", key_index=i % 5) for i in range(20)]
+    res = run(items)
+    assert not any(r.gate == "G15_key_not_predictable" for r in res.refusals), (
+        "a uniform key spread was refused"
+    )
+
+
+def test_g15_runs_after_the_mix_is_enforced():
+    """Ordering is normative. It must judge the set that will be SERVED.
+
+    If it judged the full input instead, it could pass a paper that `G11` had
+    already thinned down to a fixed-letter remainder."""
+    from xat_practice import gates
+
+    src = __import__("inspect").getsource(gates.run)
+    assert src.index("_enforce_mix") < src.index("_refuse_predictable_keys"), (
+        "G15 must run after G11, or it judges a set that is not the one served"
+    )

@@ -22,7 +22,7 @@ GATE_IDS = (
     "G5_key_grounded", "G6_stem_distinctness", "G7_level_agrees",
     "G8_near_miss_distractors", "G9_calc_budget", "G10_stratum_shape",
     "G11_mix_within_tolerance", "G12_misconceptions_named", "G13_no_leak",
-    "G14_option_value_matches_label",
+    "G14_option_value_matches_label", "G15_key_not_predictable",
 )
 
 
@@ -253,7 +253,81 @@ def run(items: list[Item]) -> GateResult:
             res.admitted.append(it)
 
     res.admitted = _enforce_mix(res, items)
+    _refuse_predictable_keys(res, res.admitted)
     return res
+
+
+#: The most a FIXED-LETTER strategy may be worth, as a fraction of the marks on
+#: the paper.
+#:
+#: The reasoning is already in the module's own numbers. Random guessing on five
+#: options at -0.25 has expected value **exactly 0.0** -- `+1/5 + 4/5 x -0.25`,
+#: measured in `guess_ev_report` and quoted in D3. So a paper in which picking one
+#: letter without reading anything is worth more than 10% of the marks is a paper
+#: that pays for NOT retrieving, and the whole product is built to prevent that.
+KEY_EXPLOIT_CEILING = 0.10
+
+
+def fixed_letter_best(items: list[Item]) -> tuple[int, float, int]:
+    """The best always-the-same-letter strategy: (letter, score, correct).
+
+    Measured with the real marking scheme, not approximated. One bad fact about
+    a paper is always worth more than any number of good ones, and that is
+    exactly the kind of fact that survives a review nobody thought to ask the
+    right question of."""
+    if not items:
+        return -1, 0.0, 0
+    best_letter, best_score, best_hits = -1, float("-inf"), 0
+    for letter in range(len(items[0].options)):
+        hits = sum(1 for it in items if it.key_index == letter)
+        score = hits * 1.0 + (len(items) - hits) * -0.25
+        if score > best_score:
+            best_letter, best_score, best_hits = letter, score, hits
+    return best_letter, best_score, best_hits
+
+
+def _refuse_predictable_keys(res: GateResult, items: list[Item]) -> None:
+    """G15 -- refuse a set whose key positions reward not reading the stem.
+
+    MEASURED 2026-10-02, from the owner: "here all question answer A, which is
+    not good." Correct, and worse than it looks. All four of Lesson 1's keys sat
+    at index 0, so a learner who answered A four times scored **4 of 4** --
+    `+4.00` of a possible `+4.00`, full marks, having read nothing.
+
+    **All fourteen existing gates passed it.** `G2` checks the key is IN RANGE.
+    Nothing checked where it SAT. Every gate in this module looks at one item, or
+    at a level mix, and none of them asks the only question that matters about a
+    set of keys: can the position alone score?
+
+    The reason it survived is worth recording. The keys were not chosen to be
+    predictable; every author simply wrote the correct answer first and listed
+    the distractors after it. Four items, same habit, same result -- and the
+    result was a paper that measures nothing.
+
+    Ordering matters and is normative: this runs AFTER the per-item loop and
+    after `G11`, so it sees the set that will actually be served. Refusing on the
+    full input instead would pass a paper that `G11` had already thinned.
+    """
+    if len(items) < 2:
+        return
+    letter, score, hits = fixed_letter_best(items)
+    ceiling = KEY_EXPLOIT_CEILING * len(items)
+    if score <= ceiling:
+        return
+    wrong = sum(1 for it in items if it.key_index != letter)
+    res.refusals.append(Refusal(
+        gate="G15_key_not_predictable",
+        item_id=items[0].id,
+        detail=(
+            f"answering {'ABCDE'[letter]} on every question scores {score:+.2f} "
+            f"of a possible {float(len(items)):+.2f} ({hits} correct, {wrong} "
+            f"wrong), above the {ceiling:.2f} ceiling -- so the KEY POSITION "
+            f"alone scores. Positions: {[it.key_index for it in items]}. "
+            f"Random guessing is worth 0.0000, so this paper pays for not "
+            f"reading."
+        ),
+    ))
+    res.admitted = []
 
 
 #: Below this size a set is a LESSON, not a paper, and `G11` must not run.

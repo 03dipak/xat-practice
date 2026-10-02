@@ -135,6 +135,12 @@ teach.
   8th**. **On-screen calculator in QA&DI.** GK is **excluded from percentile**.
   Anything you remember about "60 questions, 3×20, sectional timing" is the
   pre-2025 pattern and is wrong here.
+- **A key POSITION is as dangerous as a wrong key.** MEASURED: all four of Lesson
+  1's keys sat at index 0, so `always answer A` scored 4 of 4 — full marks for
+  reading nothing — and all 14 gates passed it. `G15` now refuses a set whose best
+  fixed-letter strategy beats random guessing by more than 10% of the marks. Every
+  paper fixture in `tests/test_gates.py` had the same defect, which is why the rule
+  had to be a gate and not a fix: it was in the authoring **convention**.
 - **Guessing has EV exactly 0.0 at 5 options** (measured, `expected_ev`:
   `+1/5 + 4/5×(−0.25) = 0.20 − 0.20`). It is **+0.0625 at 4 options**. This is
   the arithmetic behind reversing the reference project's D5 and D6: a 4-option
