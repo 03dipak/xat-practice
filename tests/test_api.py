@@ -631,3 +631,72 @@ def test_a_section_asked_about_the_wrong_exam_refuses():
                        parts=())
     with pytest.raises(ValueError, match="wrong"):
         S.SECTIONS["xat:qa_di"].counts_for_percentile(other)
+
+
+# ---------------------------------------------------------------------------
+# the exam-layer closure: every branch needs a WRONG input, or it is decoration
+# ---------------------------------------------------------------------------
+# MEASURED 2026-10-02: `_check_exam_layer()` closed by luck, because nothing
+# asserted that the parts and sections agreed. With the checks added, every `raise`
+# below is a branch that fires on a specific malformed table -- and a raise nobody
+# can reach is a raise that never runs.
+
+def test_a_sections_key_that_disagrees_with_its_value_is_refused(monkeypatch):
+    """The join was a convention. MEASURED: `SECTIONS["xat:qa_di"]` carrying
+    `exam_id="cat"` returned the CAT spec for an XAT topic, with no error."""
+    wrong = dataclasses.replace(S.SECTIONS["xat:qa_di"], exam_id="cat")
+    monkeypatch.setitem(S.SECTIONS, "xat:qa_di", wrong)
+    with pytest.raises(ValueError, match="key and the value disagree"):
+        S.self_check()
+
+
+def test_a_section_naming_an_unknown_exam_is_refused(monkeypatch):
+    good = S.SECTIONS["xat:qa_di"]
+    orphan = dataclasses.replace(good, section_id="qa_di", exam_id="cat")
+    monkeypatch.setitem(S.SECTIONS, "cat:qa_di", orphan)
+    with pytest.raises(ValueError, match="not in"):
+        S.self_check()
+
+
+def test_a_part_naming_a_section_that_does_not_exist_is_refused(monkeypatch):
+    """`ExamSpec.sections` is DERIVED from its parts, so a section can only go
+    missing at the PART level. MEASURED while writing this: the first version
+    replaced `sections=` on the ExamSpec and raised TypeError -- the field was
+    renamed to `parts` when the part layer landed, so the test was asserting against
+    a shape the code no longer has."""
+    thin = dataclasses.replace(S.PARTS["xat:part_1"],
+                               sections=("qa_di", "does_not_exist"))
+    monkeypatch.setitem(S.PARTS, "xat:part_1", thin)
+    with pytest.raises(ValueError, match="not in SECTIONS"):
+        S.self_check()
+
+
+def test_exam_question_counts_that_do_not_close_are_refused(monkeypatch):
+    """Stated as arithmetic on purpose: 28 + 26 + 21 = 75 and 75 + 20 = 95."""
+    bad = dataclasses.replace(S.EXAMS["xat"], counted_questions=74)
+    monkeypatch.setitem(S.EXAMS, "xat", bad)
+    with pytest.raises(ValueError, match="COUNTED sections sum"):
+        S.self_check()
+
+    bad2 = dataclasses.replace(S.EXAMS["xat"], total_questions=99)
+    monkeypatch.setitem(S.EXAMS, "xat", bad2)
+    with pytest.raises(ValueError, match="sections sum to"):
+        S.self_check()
+
+
+def test_an_orphan_section_nobody_claims_is_refused(monkeypatch):
+    """A section nothing points at will never be rendered and never be built, and
+    nothing would notice."""
+    extra = dataclasses.replace(S.SECTIONS["xat:gk"], section_id="spare")
+    monkeypatch.setitem(S.SECTIONS, "xat:spare", extra)
+    with pytest.raises(ValueError, match="which no exam claims"):
+        S.self_check()
+
+
+def test_a_topic_with_no_subtopics_is_refused(monkeypatch):
+    empty = S.Topic("lonely", "xat", "qa_di", "Lonely", (0,) * 7, True, "")
+    # Keep the year rows closing by replacing a topic whose row is all zeros is
+    # impossible, so assert the SPECIFIC message instead of the closure one.
+    monkeypatch.setattr(S, "TOPICS", (S.TOPICS[0], empty, *S.TOPICS[1:]))
+    with pytest.raises(ValueError):
+        S.self_check()

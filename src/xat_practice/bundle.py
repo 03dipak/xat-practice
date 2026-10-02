@@ -322,13 +322,21 @@ async function loadKey(id) {
 // filled in -- the learner would answer a question they never committed to.
 function rungBar() {
   document.getElementById('rungs').innerHTML = ORDER.map((id, n) => {
-    // "done" means ATTEMPTED, not "earlier in the queue".
+    // "done" means ATTEMPTED, not "earlier in the queue", and it is INDEPENDENT of
+    // which rung you are standing on.
     //
-    // MEASURED 2026-10-02: the condition was `n < state.i`, so clicking HARD first
-    // -- which is exactly what the level tabs invite, and exactly what the owner
-    // asked for -- lit FOUNDATION, EASY and MEDIUM solid green. The product's only
-    // self-report then says the learner did three questions they never attempted.
-    const cls = n === state.i ? 'on' : (state.log[n] ? 'done' : '');
+    // MEASURED 2026-10-02, twice:
+    //   * the condition was `n < state.i`, so clicking HARD first -- exactly what
+    //     the level tabs invite -- lit FOUNDATION, EASY and MEDIUM green for
+    //     questions never attempted. A lie about the learner's own work.
+    //   * then it became `n === state.i ? 'on' : (state.log[n] ? 'done' : '')`, so
+    //     the rung you had JUST answered never turned green: you stand on it, so it
+    //     showed 'on', and on the finish screen under the words "You worked through
+    //     every level" three tabs were green and the one you just finished was the
+    //     only white one. Found by `viewer`.
+    //
+    // So `on` and `done` are separate facts and both are applied.
+    const cls = (n === state.i ? 'on' : '') + (state.log[n] ? 'done' : '');
     const cur = n === state.i ? ' aria-current="true"' : '';
     return `<button type="button" class="rung ${cls}" data-i="${n}"${cur}>`
       + `${LABEL[id]}</button>`;
@@ -588,7 +596,26 @@ async function check() {
   // pushed to it, so the finish screen reported a count that was always 0 and
   // then never displayed it. The quadrant is the product's central claim
   // (PEDAGOGY section 2), so the finish screen has to actually show it.
-  state.log.push({ id, level: LABEL[id], right, commit: state.commit, cell });
+  // ASSIGN BY RUNG, never `push`.
+  //
+  // MEASURED 2026-10-02 by `viewer`, instrumenting Array.prototype.push: push
+  // indices came out 0, 2, 3, 4. `jumpTo(n)` does `state.log[n] = null`, which
+  // EXTENDS a sparse array, so the next `push` landed one index too high and each
+  // jump nulled the row the previous answer occupied. Answering all four rungs via
+  // the level tabs kept ONE answer in four, and the finish screen reported
+  // "You attempted 1 of 4". The count, the rows and the tab bar were three
+  // different accounts of one session.
+  //
+  // The log is keyed by rung, so it must be WRITTEN by rung. `push` is the wrong
+  // operation outright: it assumes arrival order is identity, and the whole point
+  // of the level tabs is that arrival order is the learner's choice.
+  state.log[state.i] = { id, level: LABEL[id], right, commit: state.commit, cell };
+  // REDRAW THE BAR. MEASURED 2026-10-02: `rungBar()` was called only from
+  // `render()` and `finish()`, so the rung you had just answered stayed un-marked
+  // until you navigated away -- and on the finish screen, under the words "You
+  // worked through every level", three tabs were green and the one just finished was
+  // the only white one. The rung you answered is the one whose mark matters most.
+  rungBar();
 
   document.getElementById('result').innerHTML = `
     <div class="verdict ${right ? 'ok' : 'no'}">

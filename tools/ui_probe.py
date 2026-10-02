@@ -308,7 +308,7 @@ def main(argv: list[str] | None = None) -> int:
 
     base = f"http://127.0.0.1:{port}"
     cmd = [browser, "--no-sandbox", "--disable-gpu", "--hide-scrollbars",
-           "--virtual-time-budget=15000", "--dump-dom", f"{base}/"]
+           "--virtual-time-budget=60000", "--dump-dom", f"{base}/"]
 
     shot_note = ""
     shots: list[str] = []

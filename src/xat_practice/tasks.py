@@ -409,7 +409,7 @@ TASKS: tuple[Task, ...] = (
     # question-setter, on the lesson loop). These arrived AFTER the board was
     # built, from two agents sitting and reading the same flow.
     Task(
-        id="TASK-050", type="bug", epic="LESSON-LOOP", priority="P0", status="TODO",
+        id="TASK-050", type="bug", epic="LESSON-LOOP", priority="P0", status="DONE",
         owner="code-reviewer", evidence="the source",
         title="state.log indices corrupt when levels are visited out of order",
         why=("MEASURED by `viewer` by instrumenting Array.prototype.push: push "
@@ -424,7 +424,8 @@ TASKS: tuple[Task, ...] = (
                     "tab bar agree"),
         falsifying_input=("answer all four rungs via the tabs and assert all four "
                           "appear -- before the fix, 2 of 4"),
-        source="viewer, 2026-10-02",
+        source=("viewer 2026-10-02. FIXED: assign by rung; falsified by "
+                "restoring push (0 of 4 tabs done)"),
     ),
     Task(
         id="TASK-051", type="bug", epic="LESSON-LOOP", priority="P0", status="TODO",
@@ -493,7 +494,7 @@ TASKS: tuple[Task, ...] = (
         source="question-setter",
     ),
     Task(
-        id="TASK-055", type="bug", epic="LESSON-LOOP", priority="P2", status="TODO",
+        id="TASK-055", type="bug", epic="LESSON-LOOP", priority="P2", status="DONE",
         owner="viewer", evidence="the rendered page",
         title="The rung you just answered never turns green",
         why=("the bar redraws only in render() and finish(), so it lags a rung "
@@ -604,13 +605,6 @@ TASKS: tuple[Task, ...] = (
 )
 
 
-def by_epic() -> dict[str, list[Task]]:
-    out: dict[str, list[Task]] = {}
-    for t in TASKS:
-        out.setdefault(t.epic, []).append(t)
-    return out
-
-
 def open_tasks() -> list[Task]:
     """Not DONE and not REJECTED, worst first."""
     order = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
@@ -658,7 +652,6 @@ __all__ = [
     "RECORDED",
     "TASKS",
     "Task",
-    "by_epic",
     "date",
     "open_tasks",
     "render_board",

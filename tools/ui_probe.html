@@ -579,6 +579,56 @@ function report(done) {
       // is a TEXT assertion and is labelled as one.
     }
 
+    // ---- 9. ANSWER EVERY RUNG OUT OF ORDER, then finish -------------------------
+    //
+    // MEASURED 2026-10-02, found by `viewer`: `check()` did
+    // `state.log.push(...)` while `jumpTo(n)` did `state.log[n] = null`. The
+    // assignment EXTENDS a sparse array, so each push landed one index too high and
+    // each jump nulled the row the previous answer occupied. Answering all four
+    // rungs via the level tabs kept ONE answer in four and the finish screen said
+    // "You attempted 1 of 4". The count, the rows and the tab bar were three
+    // different accounts of one session.
+    //
+    // This is the falsifying input: answer out of order, which is exactly what the
+    // tabs invite, and require all four to survive.
+    const shuffled = ['HARD', 'EASY', 'MEDIUM', 'FOUNDATION'];
+    const answered = [];
+    for (const name of shuffled) {
+      const tab = qa('.rung').find(x => x.textContent === name);
+      if (!tab) continue;
+      tab.click();
+      const onIt = await waitFor(
+        () => q('.qno') && q('.qno').textContent.indexOf(name.toUpperCase()) === 0, 4000);
+      if (!onIt) continue;
+      q('[data-conf="sure"]').click();
+      q('#reveal').click();
+      await waitFor(() => qa('.opt').length > 0, 4000);
+      const o = qa('.opt')[1];
+      if (o) o.click();
+      await waitFor(() => qa('.opt.sel').length > 0, 2000);
+      const ck = q('#check');
+      if (ck) ck.click();
+      await waitFor(() => q('#result:not(.hidden)'), 6000);
+      answered.push(name);
+    }
+    record('every-rung-can-be-answered-in-any-order', answered.length === 4,
+      'answered ' + answered.join(', '));
+
+    // THE DIRECT EVIDENCE, read off the tab bar. `rungBar()` marks a rung `done`
+    // from `state.log[n]`, so if the log survived, all four tabs are done. This is
+    // preferred over driving on to the finish screen, which is only reachable from
+    // HARD and cost three attempts of timing.
+    //
+    // MEASURED: an earlier version of this asserted the FINISH claim and PENDING'd
+    // the whole probe three times, because `#next` appears a beat after the result
+    // panel and the jump re-renders. A check that fights the harness teaches the
+    // reader to distrust it.
+    const doneTabs = qa('.rung').filter(x => x.className.indexOf('done') !== -1);
+    record('every-answered-rung-is-marked-done-on-the-tab-bar',
+      doneTabs.length >= 4,
+      doneTabs.length + ' of 4 tabs marked done: ' +
+      qa('.rung').map(x => x.textContent + (x.className.indexOf('done') !== -1 ? '=done' : '=-')).join(' '));
+
     report('done');
   } catch (err) {
     record('the-probe-itself-ran-to-completion', false, (err && err.stack) || String(err));

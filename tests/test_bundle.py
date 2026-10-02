@@ -445,7 +445,13 @@ def test_the_finish_screen_reports_the_quadrant_it_collected(on_disk):
     that reports it has to report the learner's actual cells.
     """
     js = on_disk["lesson.js"]
-    assert "state.log.push(" in js, "nothing records the outcome of a question"
+    # Either form records an outcome. MEASURED 2026-10-02: this asserted `push`,
+    # which is the form that was WRONG -- `jumpTo(n)` extends a sparse array, so a
+    # push lands one index high and the finish screen reported 1 of 4. The write is
+    # now `state.log[state.i] = ...`, and this test must not fail the fix.
+    assert ("state.log[state.i] =" in js or "state.log.push(" in js), (
+        "nothing records the outcome of a question"
+    )
     finish = js[js.index("function finish()"):js.index("document.addEventListener")]
     assert "rows.map(" in finish, "the finish screen does not list the four cells"
     assert "wasSure" in finish, (
@@ -852,11 +858,19 @@ def test_rungs_are_done_only_when_attempted_not_when_earlier_in_the_queue(on_dis
     claimed the learner had done three questions they never attempted."""
     js = on_disk["lesson.js"]
     bar = js[js.index("function rungBar()"):js.index("function jumpTo(")]
-    # The EXACT assignment, not a substring search: the comment above it explains
-    # the old defect and quotes the old condition, so grepping for it always matched.
-    assert "const cls = n === state.i ? 'on' : (state.log[n] ? 'done' : '')" in bar, (
+    # ON THE CODE, not the comment. The comment above the assignment explains that
+    # `n < state.i` was the old condition, so a substring search always matched.
+    code = re.sub(r"//[^\n]*", "", bar)
+    assert "state.log[n] ? 'done'" in code, (
         "a rung must be 'done' only if it was ANSWERED, not merely earlier in the "
-        f"queue. Got:\n{bar[:400]}"
+        f"queue. Got:\n{code[:400]}"
+    )
+    assert "n < state.i" not in code, "queue position is not 'done'"
+    # `on` and `done` are independent: answering the rung you are standing on must
+    # still mark it done. MEASURED 2026-10-02 -- it did not, so on the finish screen
+    # the rung just finished was the only unmarked one.
+    assert "'on' : ''" in code, (
+        "'on' must be additive, not exclusive: a rung can be both current and done"
     )
 
 
@@ -905,3 +919,57 @@ def test_no_served_page_carries_an_unescaped_build_placeholder(on_disk):
             f"{name} still contains the __HOME__ placeholder, so the build-time "
             "substitution did not run"
         )
+
+
+def test_the_answer_log_is_written_by_rung_and_never_pushed(on_disk):
+    """TASK-050. The falsifying input is in `tools/ui_probe.html`: answer all four
+    rungs through the level tabs in a shuffled order and require all four to
+    survive. With `push` it was 0 of 4 marked done; with this it is 4 of 4.
+
+    MEASURED 2026-10-02, found by `viewer` instrumenting
+    `Array.prototype.push`: push indices came out 0, 2, 3, 4. `jumpTo(n)` does
+    `state.log[n] = null`, which EXTENDS a sparse array, so the next push landed
+    one index too high and each jump nulled the row the previous answer occupied.
+    Answering all four rungs out of order kept ONE answer in FOUR, and the finish
+    screen, the row list and the tab bar were three different accounts of one
+    session.
+
+    `push` is the wrong operation outright: the log is keyed by rung, and the whole
+    point of the level tabs is that arrival order is the learner's choice.
+    """
+    js = on_disk["lesson.js"]
+    assert "state.log.push(" not in js, (
+        "state.log is keyed by RUNG. `push` assumes arrival order is identity, "
+        "which the level tabs exist to deny. Use `state.log[state.i] = ...`."
+    )
+    assert "state.log[state.i] =" in js
+
+
+def test_the_tab_bar_is_redrawn_after_answering(on_disk):
+    """TASK-055. `rungBar()` was called only from `render()` and `finish()`, so the
+    rung you had just answered stayed un-marked until you navigated away. On the
+    finish screen, under the words "You worked through every level", three tabs were
+    green and the one you had just finished was the only white one."""
+    js = on_disk["lesson.js"]
+    check = js[js.index("state.log[state.i] ="):]
+    window = check[:check.index("document.getElementById('result')")]
+    assert "rungBar()" in window, (
+        "the rung bar must be redrawn as soon as an answer is recorded, or the "
+        "rung you just answered is the one still un-marked"
+    )
+    # And 'on' and 'done' are separate facts, so answering the rung you are
+    # standing on still marks it done.
+    bar = js[js.index("function rungBar()"):js.index("function jumpTo(")]
+    # STRIP COMMENTS BEFORE ASSERTING ON CODE.
+    # MEASURED 2026-10-02: this first asserted `"n < state.i" not in bar` and failed
+    # -- because the comment in `rungBar()` explains that `n < state.i` was the OLD
+    # condition, so the fix's own explanation tripped it. That is the fifth time in
+    # this project a text search fired on correct code, and the second time on my
+    # own comment.
+    code = re.sub(r"//[^\n]*", "", bar)
+    assert "'on'" in code and "'done'" in code
+    assert "state.log[n] ? 'done'" in code, (
+        "'done' must come from the LOG, not from queue position -- otherwise "
+        "opening HARD first lights three rungs green for questions never attempted"
+    )
+    assert "n < state.i" not in code, "queue position is not 'done'"
