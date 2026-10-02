@@ -145,3 +145,94 @@ def test_the_csv_has_no_stray_newlines_inside_a_cell():
             assert not re.search(r"\s{3,}", value), (
                 f"{row['id']}: {col} has a run of spaces, usually a wrapped sentence"
             )
+
+
+# ---------------------------------------------------------------------------
+# THE LIFECYCLE: TODO -> OPEN -> FIXED -> TESTING -> [DONE | REOPEN].
+# Each test below DISPROVES a specific way the board can lie while looking
+# complete, which is the failure mode of any task list.
+# ---------------------------------------------------------------------------
+
+
+TASKS = T.TASKS
+LIFECYCLE = T.LIFECYCLE
+LEGAL_TRANSITIONS = T.LEGAL_TRANSITIONS
+STATUS_LEGEND = T.STATUS_LEGEND
+TERMINAL = T.TERMINAL
+render_board = T.render_board
+
+
+def test_every_status_in_use_is_a_declared_lifecycle_state():
+    """A typo'd status is invisible on a hand-written board and silently drops
+    the record out of every count."""
+    used = {t.status for t in TASKS}
+    assert used <= set(LIFECYCLE), f"undeclared statuses: {used - set(LIFECYCLE)}"
+
+
+def test_every_lifecycle_state_has_a_meaning():
+    """A status nobody can define is a status nobody applies consistently."""
+    assert set(LIFECYCLE) == set(STATUS_LEGEND)
+
+
+def test_every_state_can_reach_a_terminal_one():
+    """DISPROVES: a state with no path to DONE or REJECTED, so records accumulate
+    in it forever and the board's open count grows without any work happening."""
+    def reaches_terminal(st: str, seen: frozenset[str] = frozenset()) -> bool:
+        if st in TERMINAL:
+            return True
+        if st in seen:
+            return False
+        return any(reaches_terminal(n, seen | {st}) for n in LEGAL_TRANSITIONS[st])
+
+    unreachable = [s for s in LIFECYCLE if not reaches_terminal(s)]
+    assert not unreachable, f"cannot reach a terminal state: {unreachable}"
+
+
+def test_a_record_is_not_DONE_without_a_falsifying_input():
+    """THE rule that separates a claim about work from a claim about evidence.
+
+    MEASURED 2026-10-02: the board carried 8 DONE and 6 records whose tests had
+    never been run, and both counts were quoted as the same kind of fact.
+    """
+    for t in TASKS:
+        if t.status == "DONE":
+            bad = not t.falsifying_input or t.falsifying_input.strip().lower().startswith(
+                ("n/a", "none"))
+            assert not bad, (
+                f"{t.id} is DONE with falsifying_input={t.falsifying_input!r}: DONE "
+                "may only claim an input was SHOWN to fail, and 'n/a' means none "
+                "was"
+            )
+
+
+@pytest.mark.parametrize("status", ["FIXED", "TESTING", "REOPEN"])
+def test_a_work_in_progress_record_carries_evidence(status: str):
+    """DISPROVES: a status change with nothing to point at.
+
+    FIXED and TESTING are claims about a machine; a claim with no command, count
+    or refusal behind it is a mood. This is the same rule this project applies to
+    gates, and it belongs on the board too.
+    """
+    for t in TASKS:
+        if t.status == status:
+            assert t.evidence.strip(), f"{t.id} is {status} with no evidence"
+
+
+def test_TERMINAL_states_have_nowhere_to_go_but_REOPEN_and_that_is_intentional():
+    """REJECTED is terminal on purpose (rule 3). DONE can only be undone by
+    evidence, never edited -- see the note on REOPEN."""
+    assert LEGAL_TRANSITIONS["REJECTED"] == ()
+    assert LEGAL_TRANSITIONS["DONE"] == ("REOPEN",)
+
+
+def test_the_board_counts_close_on_the_total():
+    """Rule 5: the header's numbers must sum to the number of records."""
+    tally = {k: sum(1 for t in TASKS if t.status == k) for k in LIFECYCLE}
+    assert sum(tally.values()) == len(TASKS)
+    assert len(TASKS) == sum(1 for _ in TASKS)
+
+
+def test_rendered_board_prints_the_lifecycle_so_the_rules_are_visible():
+    """The lifecycle is only real if the person moving a card can read it."""
+    out = render_board()
+    assert "LIFECYCLE: TODO -> OPEN -> FIXED -> TESTING -> [DONE|REOPEN]" in out

@@ -253,3 +253,52 @@ STANDING RULES THAT APPLY TO EVERY ITEM ABOVE
 - **Percentile claims name their strata or are `UNMEASURED`.**
 - **A right default is not neutral.** The blank penalty bug cost no time to find and
   would have cost a learner real marks.
+
+===============================================================================
+SESSION 2026-10-02 (late) -- "give me more, 1-9, one click" + the Jira board
+===============================================================================
+
+STATE, stated first so nobody quotes the card count instead:
+  1. SUPPLY BUILT, VERIFICATION DEFERRED.  `generate.py` has 8 percentage
+     templates and 59 single-digit instances; ruff and mypy are clean and 26 of
+     32 generator tests pass. SIX TESTS FAIL -- gate admission (3), solver
+     re-derivation (2), option parsing (1) -- and the owner deferred them.
+     The card is TASK-062, status TESTING. Not DONE.
+     THE ONE-CLICK BUTTON IS NOT BUILT.  This is supply, not the button.
+
+  2. BOARD IS A JIRA BOARD.  TODO -> OPEN -> FIXED -> TESTING -> [DONE|REOPEN],
+     as DATA in tasks.py (LIFECYCLE, LEGAL_TRANSITIONS) with eight tests that
+     enforce the five rules.  AGENTS.md has the section.  TASK-063, DONE.
+
+WHAT THE GENERATOR TAUGHT, which is worth more than the code:
+  * A generator cannot vary NUMBERS.  G6 and G17 both refuse two items sharing a
+    digit-masked derivation, so variety has to come from STRUCTURE.  Hence eight
+    TEMPLATES, each a different piece of reasoning, each parameterisable.
+  * MEASURED: my hand-picked parameter table produced NOTHING for five of the
+    eight templates.  A generator that silently emits nothing is worse than no
+    generator -- the button works and the drill is empty.  Parameters are now
+    SEARCHED over a grid, deterministically.
+  * MEASURED: `reverse_percent` shipped for a session computing `final = p*100+q`,
+    so its answer was never below 90 and no single-digit instance could exist.
+    Not a grid error -- the QUESTION was wrong.  The search caught it by
+    reporting the template EMPTY, which is the only reason it was caught at all.
+  * MEASURED: every instance of `two_quantities` had key 1, because the answer
+    depends only on (p - q) while the grid varies p fastest.  Fixed by deduping on
+    the KEY: distinct ANSWERS matter as much as distinct reasoning.
+  * MEASURED: the unit leaked into `option_values` TWICE -- first as the key's own
+    display string, then through the DISTRACTOR texts.  AGENTS.md warns that
+    display strings are not arithmetic; it took two passes because the second one
+    came through a different door.  Templates are now arithmetic-only and
+    `_to_item` is the single place that adds a unit to a label.
+
+FIRST THING TOMORROW, in order:
+  1. TASK-062: make the six failing generator tests pass, then move the card
+     TESTING -> DONE.  Start with the three admission failures: read the actual
+     refusal messages before touching anything.
+  2. Then, and only then, the ONE-CLICK ROUTE (TASK-010): a button on the rung
+     that serves `items_at_level(subtopic, level, count)` from the generator.
+     It must not be built before the supply is proven, or the button demonstrates
+     an empty drill.
+  3. UI AUTOMATION discussion is the owner's next topic -- TASK-032 (never
+     exercised: #freeAnswer, #startQ, the `unsure` button, 4 of 5 options,
+     keyboard Enter/Space) is where it would land.

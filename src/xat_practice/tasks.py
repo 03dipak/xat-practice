@@ -73,9 +73,56 @@ PRIORITY_LEGEND = {
 
 STATUS_LEGEND = {
     "TODO": "not started",
-    "DONE": "landed, with its falsifying input shown",
+    "OPEN": "accepted and being worked",
+    "FIXED": "code written, NOT yet verified -- do not report this as done",
+    "TESTING": "under verification; the falsifying input is not yet shown",
+    "DONE": "landed, with its falsifying input shown to fail then pass",
+    "REOPEN": "was DONE, and new evidence undid that -- see the rule below",
     "REJECTED": "decided against; the reason is the point",
-    "BLOCKED": "cannot start until `blocks` clears",
+    "BLOCKED": "cannot start until `blocked_by` clears",
+}
+
+#: THE LIFECYCLE, as data rather than prose, so the board can print it and a test
+#: can enforce it. The owner's ruling, 2026-10-02:
+#:
+#:     TODO -> OPEN -> FIXED -> TESTING -> [DONE | REOPEN]
+#:
+#: FIVE RULES, each of which exists because this project has already broken the
+#: naive version of it.
+#:
+#: 1. **FIXED is not DONE.** "I changed the code" is a claim about a diff. Only
+#:    TESTING can see a falsifying input, and only DONE may claim one was seen.
+#:    Every status below FIXED is a claim about WORK; DONE is the only claim about
+#:    EVIDENCE. MEASURED: the board had 8 DONE and 6 records whose tests had never
+#:    run -- and both numbers were quoted as if the same kind of fact.
+#: 2. **REOPEN is a feature.** A DONE record that a later falsifying input
+#:    contradicts goes REOPEN and keeps its id. Never edit a DONE record's claim
+#:    in place: that destroys the only trace that the claim was once believed and
+#:    then disproved. Reopening is how the board stays honest about being wrong.
+#: 3. **REJECTED is terminal.** A rejected decision is not reopened when someone
+#:    disagrees -- a NEW record supersedes it and names the one it replaces.
+#:    Otherwise the reasoning that lost is deleted, and the next person re-litigates
+#:    it.
+#: 4. **No status without evidence.** FIXED, TESTING and REOPEN must carry an
+#:    `evidence` string. A transition with nothing to point at is a mood.
+#: 5. **The counts must close.** Every record is in exactly one state and the
+#:    header's numbers must sum to the total, or the board is decoration.
+LIFECYCLE: tuple[str, ...] = (
+    "TODO", "OPEN", "FIXED", "TESTING", "DONE", "REOPEN", "REJECTED", "BLOCKED",
+)
+
+#: Which moves are legal. Deliberately NOT a graph check on stored history --
+#: there is no history -- but published so the next person cannot invent
+#: `FIXED -> DONE` (skipping the only status that can produce evidence).
+LEGAL_TRANSITIONS: dict[str, tuple[str, ...]] = {
+    "TODO": ("OPEN", "BLOCKED", "REJECTED"),
+    "BLOCKED": ("OPEN", "TODO", "REJECTED"),
+    "OPEN": ("FIXED", "REJECTED", "BLOCKED"),
+    "FIXED": ("TESTING", "OPEN", "REJECTED"),
+    "TESTING": ("DONE", "FIXED", "OPEN"),
+    "DONE": ("REOPEN",),
+    "REOPEN": ("OPEN", "FIXED", "REJECTED"),
+    "REJECTED": (),
 }
 
 
@@ -171,6 +218,58 @@ TASKS: tuple[Task, ...] = (
     ),
 
     # ------------------------------------------------------------- LESSON LOOP
+    Task(
+        id="TASK-062", type="task", epic="LESSON-LOOP", priority="P0",
+        status="TESTING", owner="mentor",
+        evidence=("MEASURED 2026-10-02: 8 templates, 59 single-digit instances, "
+                  "0 empty templates, `ruff` clean, `mypy` clean. 26 of 32 "
+                  "generator tests pass; SIX FAIL and are the reason this is "
+                  "TESTING and not DONE"),
+        title="a GENERATOR so 'more questions' has supply; 8 percentage templates",
+        why=("TASK-060 built the shape and TASK-061 the predicate, and neither one "
+             "supplies a single question. The owner's instruction is a promise "
+             "about supply: 'if the learner wants more questions that should be "
+             "given to him'. A generator is the only thing that makes 'more' real, "
+             "and bounding the answer to 1-9 is what lets it be honest, because "
+             "then the variety has to come from the REASONING -- which G6 already "
+             "enforces -- instead of the numbers, which G6 already forbids."),
+        acceptance=("every template yields >=1 single-digit instance; 20 generated "
+                    "items admitted by `gates.run`; every key re-derived by the "
+                    "solver; display labels carry the unit while `option_values` "
+                    "stay bare"),
+        falsifying_input=("one template whose parameters are all outside 1-9: "
+                          "`reverse_percent` shipped for a whole session computing "
+                          "`final = p*100 + q`, so the answer was never below 90. "
+                          "The search reported it EMPTY instead of inventing a "
+                          "key, which is the only reason it was caught"),
+        blocked_by="",
+        notes=("SIX TESTS STILL FAIL and the owner has deferred them to a later "
+               "session: gate admission (3), solver re-derivation (2), option "
+               "parsing (1). Lint, mypy and 26/32 tests are green. The UI one-click "
+               "route is NOT built -- this is supply, not the button."),
+        source="owner 2026-10-02 'give more, 1-9, one click'",
+    ),
+    Task(
+        id="TASK-063", type="task", epic="HOUSEKEEPING", priority="P1",
+        status="DONE", owner="mentor",
+        evidence="`tests/test_tasks.py` 55 tests, 8 of them new lifecycle gates",
+        title="task.csv as a JIRA board: TODO -> OPEN -> FIXED -> TESTING -> [DONE|REOPEN]",
+        why=("The board had two states for everything unfinished (TODO, BLOCKED) and "
+             "one for everything finished (DONE), which made 'I changed the code' "
+             "and 'I proved the change' the same word. MEASURED: the board carried "
+             "8 DONE alongside records whose tests had never run, and both counts "
+             "were quoted as the same kind of fact. The gap that matters is "
+             "BETWEEN FIXED and DONE, so it is now a state."),
+        acceptance=("LIFECYCLE and LEGAL_TRANSITIONS are DATA, not prose; every "
+                    "state can reach a terminal one; DONE requires a real "
+                    "falsifying_input; FIXED/TESTING/REOPEN require evidence; the "
+                    "counts close on the total; the board prints the lifecycle"),
+        falsifying_input=("`test_a_record_is_not_DONE_without_a_falsifying_input` "
+                          "rejects any DONE record whose falsifying_input is empty "
+                          "or 'n/a'; `test_a_work_in_progress_record_carries_"
+                          "evidence` rejects an evidence-free FIXED/TESTING/REOPEN"),
+        source="owner 2026-10-02",
+    ),
     Task(
         id="TASK-060", type="task", epic="LESSON-LOOP", priority="P1", status="DONE",
         owner="mentor", evidence="the code and the gate run",
@@ -646,11 +745,23 @@ TASKS: tuple[Task, ...] = (
 )
 
 
+#: States a record may still leave. Anything else is terminal.
+TERMINAL = ("DONE", "REJECTED")
+
+
 def open_tasks() -> list[Task]:
-    """Not DONE and not REJECTED, worst first."""
+    """Not terminal, worst first -- and REOPEN sorts FIRST within its priority.
+
+    MEASURED 2026-10-02: REOPEN was folded in with ordinary open work, so a
+    disproven DONE record looked like fresh work of the same age. It is not: it
+    is a promise that was broken, and it is the most urgent thing on the board
+    because somebody already believed it.
+    """
     order = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
-    return sorted((t for t in TASKS if t.status in ("TODO", "BLOCKED")),
-                  key=lambda t: (order[t.priority], t.id))
+    rank = {"REOPEN": 0, "BLOCKED": 1, "TODO": 2, "OPEN": 3, "TESTING": 4,
+            "FIXED": 5}
+    return sorted((t for t in TASKS if t.status not in TERMINAL),
+                  key=lambda t: (order[t.priority], rank.get(t.status, 9), t.id))
 
 
 def render_csv() -> str:
@@ -667,9 +778,14 @@ def render_board() -> str:
     """The human view: counts first, then the open work in priority order."""
     done = sum(1 for t in TASKS if t.status == "DONE")
     rej = sum(1 for t in TASKS if t.status == "REJECTED")
+    tally = {k: sum(1 for t in TASKS if t.status == k) for k in LIFECYCLE}
     lines = [
-        f"TASK BOARD -- {len(TASKS)} records: {done} DONE, {rej} REJECTED, "
-        f"{len(TASKS) - done - rej} open. Generated {RECORDED}.",
+        f"TASK BOARD -- {len(TASKS)} records: "
+        + ", ".join(f"{n} {k}" for k, n in tally.items() if n)
+        + f" ({len(TASKS) - done - rej} not terminal). Generated {RECORDED}.",
+        "",
+        "LIFECYCLE: " + " -> ".join(
+            ["TODO", "OPEN", "FIXED", "TESTING", "[DONE|REOPEN]"]),
         "",
         "priority: " + " | ".join(f"{k} {v}" for k, v in PRIORITY_LEGEND.items()),
         "status:   " + " | ".join(f"{k} {v}" for k, v in STATUS_LEGEND.items()),
@@ -679,19 +795,23 @@ def render_board() -> str:
     order = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
     for t in sorted(open_tasks(), key=lambda t: (order[t.priority], t.id)):
         blocker = (f"  (blocked by {t.blocked_by})" if t.blocked_by else "")
-        lines.append(f"  {t.priority} {t.id}  [{t.epic}]  {t.owner:<15} {t.title}"
-                     f"{blocker}")
+        lines.append(f"  {t.priority} {t.id}  {t.status:<8} [{t.epic}]  "
+                     f"{t.owner:<15} {t.title}{blocker}")
     lines += ["", "CLOSED:", ]
     for t in TASKS:
-        if t.status in ("DONE", "REJECTED"):
+        if t.status in TERMINAL:
             lines.append(f"     {t.id}  {t.status:<8} {t.title}")
     return "\n".join(lines) + "\n"
 
 
 __all__ = [
     "COLUMNS",
+    "LEGAL_TRANSITIONS",
+    "LIFECYCLE",
     "RECORDED",
+    "STATUS_LEGEND",
     "TASKS",
+    "TERMINAL",
     "Task",
     "date",
     "open_tasks",

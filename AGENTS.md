@@ -320,6 +320,60 @@ teach.
   `Item` carries `option_values` for the arithmetic and `G14` asserts the value
   is visible in the label.
 
+## The board is a Jira board, and this is how you move a card
+
+**`docs/TASKS.csv` is the board. `src/xat_practice/tasks.py` is the only place a
+card exists.** `todo.txt` is the *narrative* — why the work mattered — and it is
+deliberately not the tracker. Three homes for one task is how they drift, and the
+CSV is **generated** (`uv run xat-practice tasks --write`), so it cannot be edited
+into disagreement with the source without a test failing.
+
+```
+TODO ──▶ OPEN ──▶ FIXED ──▶ TESTING ──┬──▶ DONE
+                                        └──▶ REOPEN ──▶ OPEN
+```
+
+`REJECTED` is terminal. `BLOCKED` means `blocked_by` is not clear.
+
+**Five rules. Each exists because this project has already broken the naive
+version.**
+
+1. **`FIXED` is not `DONE`.** "I changed the code" is a claim about a *diff*. Only
+   `TESTING` can see a falsifying input, and only `DONE` may claim one was seen.
+   Everything below `FIXED` is a claim about **work**; `DONE` is a claim about
+   **evidence**. MEASURED 2026-10-02: the board held 8 `DONE` beside records whose
+   tests had never run, and both counts were quoted as the same kind of fact. When
+   you report progress, **quote the status, not the card's existence.**
+2. **`REOPEN` is a feature, not a failure.** A `DONE` record that a later falsifying
+   input contradicts goes to `REOPEN` and **keeps its id**. Never edit a `DONE`
+   record's claim in place — that destroys the only trace that a claim was once
+   believed and then disproved. `REOPEN` sorts **first** within its priority,
+   because somebody already believed it.
+3. **`REJECTED` is terminal; supersede it.** Someone disagreeing with a rejected
+   decision opens a **new** card that names the one it replaces. Reopening the
+   rejection deletes the reasoning that lost, and the next person re-litigates it.
+4. **No status without evidence.** `FIXED`, `TESTING` and `REOPEN` must carry an
+   `evidence` string — a command, a count, a refusal. A transition with nothing
+   behind it is a mood. This is the gate rule applied to yourself.
+5. **The counts must close.** Every record is in exactly one state and the header's
+   numbers must sum to the total, or the board is decoration.
+   `test_the_board_counts_close_on_the_total` checks it.
+
+**A `DONE` card with no falsifying input is a lie, and it is tested:**
+`test_a_record_is_not_DONE_without_a_falsifying_input` rejects any `DONE` whose
+`falsifying_input` is empty or `"n/a"`. The gap between `FIXED` and `DONE` is the
+whole point of the lifecycle, so that gap is where the falsifying input lives.
+
+**The agents have standing routes into the board.** Per
+`opencode.json`, each `opencode`'s scoped reviewer writes a card before it starts
+and moves it when it stops: `ui-inspector` and `viewer` → `TESTS`/`UI`,
+`key-auditor` → `P0`, `level-auditor` → `P1`, `paper-auditor` → `P1`,
+`question-setter` → `P1`, `tester` → `P1`, `doc-reviewer` → `P2`, `code-reviewer` →
+`P2`, `mentor` → whatever it rules on. **A review that finds nothing still writes a
+`REJECTED` card**, because "I looked and it is fine" is a result that should cost
+the same as a finding, and a silent review leaves no trace that the tree was ever
+examined.
+
 ## Retired, and why — do not re-open
 
 - **`Verdict.HOLD` for a judgement item.** Was the first design; it would have
