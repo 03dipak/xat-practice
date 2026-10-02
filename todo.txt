@@ -1,0 +1,243 @@
+TODO — xat_practice
+===================
+
+**Purpose.** If this session ends, a new one must be able to continue from this file
+alone. Every item states its population, its evidence, and what "done" means. No item
+is a vibe.
+
+Last updated: 2026-10-02. Committed state: `16d1cd9` + the exam-layer work after it.
+Read order for a cold start:
+
+1. `AGENTS.md` — how this project works, and the facts that have bitten it
+2. `todo.txt` — this file
+3. `docs/DECISIONS.md` — the ruling ledger, D1..D26
+4. `docs/ADOPT_REJECT.md` — what five reviews said, and what was done about it
+5. `docs/LLD.md` — the Exam -> Part -> Section -> Topic design and its phases
+6. `docs/COVERAGE.md` — GENERATED. Do not hand-edit; re-run `uv run xat-practice coverage`
+
+Commands (all must pass before any commit):
+
+    uv run ruff check src tests tools
+    uv run mypy src
+    uv run python -c "import xat_practice.cli"   # a green linter is not a green build
+    uv run pytest -q --strict-markers --cov
+    uv run coverage report --include="src/xat_practice/*.py" --fail-under=95 --precision=2
+    uv run python tools/ui_probe.py --lesson <lesson_id>    # PER lesson, never one
+    node --check out/xat/qa_di/<lesson_id>/lesson.js
+
+Baseline to compare against: **331 passed, 95.35% coverage, 13 source files, mypy
+clean, 54/54 UI checks on each of the 2 lessons.** Run the suite before changing
+anything and write the measured number, not this one, into any commit.
+
+To see the product:
+
+    uv run xat-practice build     # writes out/xat/qa_di/<lesson_id>/
+    uv run xat-practice serve     # ONE url, no prompt: http://127.0.0.1:8000/
+
+
+================================================================================
+WHERE WE ARE
+================================================================================
+
+Written: 2 of 40 QA&DI subtopics (5.0%). 8 of 8 items admitted by the gates.
+Traps: 104 across 40 subtopics. Block capacity: **0 of 40** subtopics have >= 10
+named traps, which is what blocks any 20-item block.
+
+Shape, verified from XLRI's own 2026 notification and now in code:
+    XAT 2026 = 95 questions, 75 counted, 2 parts.
+    Part 1: QA&DI 28 + VA&LR 26 + DM 21 = 75, 170 min SHARED, no sectional limit,
+            +1 / -0.25, and -0.10 per blank after the FIRST EIGHT ACROSS THE PART.
+    Part 2: GK 20, 10 min, no negative marking, EXCLUDED from the percentile.
+
+**It is October 2026.** The paper a learner actually sits is most likely XAT 2027.
+The shape above is `evidence=OFFICIAL, verified_against="XLRI Important
+Instructions, XAT 2026"`. Re-verify counts, marking, blank rule, calculator and
+timing against the 2027 brochure before quoting any of it as current.
+
+
+================================================================================
+P0 — CORRECTNESS. Nothing above this line ships.
+================================================================================
+
+[P0-1] ~~Blank penalty moved to PartSpec~~ — DONE 2026-10-02.
+       It sat on `SectionSpec`, implying 8 free blanks PER SECTION; the truth is 8
+       across all 75 Part 1 questions. Found independently by Claude.ai and
+       Perplexity.ai. Falsifying input:
+       `test_the_blank_penalty_counts_across_the_part_not_within_a_section`.
+
+[P0-2] ~~SectionSpec.stratum was a single value~~ — DONE. QA&DI holds 37 QUANT and
+       3 LOGIC subtopics; `strata()` now derives the distribution.
+
+[P0-3] ~~"37% of percentile"~~ — DONE. It is 37.33% of Part 1 raw-score QUESTION
+       COUNT. Percentile is `UNMEASURED` here and raw score is always printed beside it.
+
+[P0-4] ~~guess-EV dropped mark_correct~~ — DONE. Was -0.6000 for CAT's reported
+       +3/-1; truth -0.2000. Now delegates to `items.expected_ev`.
+
+[P0-5] Import smoke test — DONE. `tests/test_import_smoke.py` gates the import, every
+       module's own import, and the full `--collect-only`, as subprocesses.
+
+
+================================================================================
+P1 — THE NEXT LESSONS. Ordered. Each unblocks the one after it.
+================================================================================
+
+[P1-1] ADD A PREREQUISITE GRAPH over subtopics.
+       Why first: it decides what "next" means, and the honest answer is currently
+       "the highest-weight node whose prerequisites are satisfied", NOT "the biggest
+       block". DI is the biggest block (6.71 q/yr) and is NOT reachable today.
+       Evidence it matters: `avg_ratio` has 0 of 3 subtopics written; `pct` is 0.0
+       = UNMEASURED, sitting inside `avg_ratio`. Writing DI first teaches
+       calculation shortcuts to a learner with no foundations, which is exactly what
+       the foundation->hard ladder exists to prevent.
+       Done when: `syllabus.PREREQUISITES` is data, `self_check()` refuses a cycle,
+       and a verb or the ledger prints "highest-weight reachable node".
+
+[P1-2] WRITE `avg_ratio:weighted-average` — the first reachable lesson.
+       2.57 q/yr, and the prerequisite for DI, for pct, and for `pct` inside it.
+       Done when: 4 rungs derive foundation/easy/medium/hard, G17 gives 4/4 shapes,
+       the step-by-step teaches, `docs/COVERAGE.md` regenerated, and
+       `uv run python tools/ui_probe.py --lesson <new id>` is 54+/54.
+
+[P1-3] FOLD AUTHORED MISCONCEPTIONS INTO `Subtopic.traps`.
+       Why: `block capacity` reads 0 of 40, so **no 20-item block can exist**. Lesson 1
+       has 20 traps and Lesson 2 has 3 syllabus traps against 16 item-level
+       misconceptions — the misconceptions exist, they are just not in the syllabus.
+       Careful: this is exactly the padding trap. Do NOT invent filler. Move the
+       misconceptions that the authored items already use. REJECTED by review: a
+       numeric "coverage matrix" as a gate (unmeasured thresholds are D13's error).
+       Done when: `uv run xat-practice coverage` shows block capacity > 0 and the
+       count came from real authored text.
+
+[P1-4] `Item.Set` FOR SHARED STIMULI — needed BEFORE any DI content.
+       XAT DI and caselet items arrive as 3-5 questions over ONE stimulus. `G11`'s
+       mix and `registry._assert_one_rung_per_level` both assume one item, one key.
+       Also the strongest available use of D1: DI data generated parametrically and
+       solved by exact arithmetic.
+       Done when: a set builds, all gates accept it, and `G17` compares shapes within
+       the set rather than across it.
+
+[P1-5] `Distractor.trap_id` — link each distractor to a named `Subtopic.traps` entry.
+       Today `traps` and `distractor.misconception` are parallel lists with nothing
+       joining them. `G16` proves the arithmetic; nothing proves the distractor draws
+       from the declared trap set. This is what makes a learner response log
+       analysable.
+
+[P1-6] 20-ITEM LEVEL-FILTERED BLOCKS.
+       The learner picks the level (D26); `G11` must never see the drill.
+       Quotas: MOCK keeps `LEVEL_MIX` (2/5/8/5 at n=20). A drill is level-filtered.
+       Depends on P1-3.
+
+[P1-7] MOCKS: `MOCK-QA` 28 -> `MOCK-FULL` 75.
+       Carry forward from review: a mock needs a topic cap and no duplicate method
+       templates, not just an item count. The level mix before learner data exists is
+       `UNMEASURED` and must be labelled so.
+
+
+================================================================================
+P2 — HONESTY OF THE REPORTING
+================================================================================
+
+[P2-1] Percentile is `UNMEASURED` and every figure says so.
+       Needs an edition-labelled cohort data layer before anything else. Until then:
+       raw score and "question-count share" only.
+
+[P2-2] LEARNER RESPONSE LOGGING (time per item, chosen option, which trap).
+       The level bands are currently an assumption. Store in the browser, exportable.
+       Without it, `derive_level` is calibrated against our own guess about difficulty.
+
+[P2-3] `Item.options` override + `effective_options(item, section)`.
+       Deferred by review: needed when a section mixes MCQ and non-MCQ. Premature now.
+
+[P2-4] MARKING MUST REACH THE BROWSER FROM `paper.json`.
+       `lesson.js` must not keep its own copy, or the two-rules-that-disagree defect
+       is recreated in the client. Needed before full-mock scoring in the UI.
+
+[P2-5] CALCULATOR: exam permission vs training affordance. OPEN DECISION.
+       `SectionSpec.calculator` records what the exam allows. Whether the app offers
+       one is separate, and the default must not let a calculator hide arithmetic
+       weakness. Sits in tension with G9's own rationale. Not resolved.
+
+[P2-6] PER-LEVEL TIME TARGETS. DEFERRED, and it CONFLICTS with a gate.
+       R4 proposed 30-75s (foundation) .. 150-300s (hard). **`G9` refuses any item
+       over 2 minutes**, so the Hard band would be refused by our own gate. Reconcile
+       with G9 before adopting; do not silently raise G9.
+
+
+================================================================================
+P3 — THE EXAM LAYER. Phases from `docs/LLD.md`.
+================================================================================
+
+[P3-1] PHASE A — DONE. Exam/Part/Section data, required `Topic.exam_id`/`section_id`,
+       derived `Lesson.exam_id`/`section_id`, `_check_exam_layer()`.
+
+[P3-2] PHASE A2 — marking duplication. THREE homes for +1/-0.25:
+       `gates.py` (G15's score), `items.expected_ev` defaults, `SectionSpec`. Also
+       derive `QUANT_MOCK`/`FULL_MOCK` from `SECTIONS`/`EXAMS` instead of repeating
+       28, 170, 5 and Stratum.QUANT as literals.
+
+[P3-3] PHASE B — `gates.py` reads marking from `SectionShape` rather than literals.
+
+[P3-4] PHASE C — NAVIGATION. Partly done: the page now renders
+       Exam -> Section -> Topic -> Subtopic for ALL 17 topics, written ones linked and
+       the other 38 subtopics named as pending. STILL TO DO:
+         - an exam chooser, rendered only when `len(EXAMS) > 1` (progressive
+           disclosure, so a single-exam product costs no extra click)
+         - the adopted migration tests: lesson ids stable, no PAPER_SHAPE imports,
+           ONE-exam nav has no chooser, a TWO-exam fixture exposes a chooser and
+           both routes resolve
+
+[P3-5] SECTION PAGES. `/xat/` and `/xat/qa-di/` do not exist yet; the whole tree is
+       rendered on one page. Fine at 2 lessons, not at 40.
+
+[P3-6] PHASE D — complete QA&DI. That is P1-1 through P1-7.
+
+[P3-7] PHASE E, SPLIT (per review — "parked" hid a tractable share):
+       E1 = the LOGIC half, keys true BY CONSTRUCTION, so computable:
+            para-jumbles (key = the source paragraph's order), arrangement and
+            constraint sets, syllogisms, conditional logic.
+       E2 = JUDGEMENT only, and parked on machinery that does not exist:
+            `enumeration.py`, the blind second call (D2), prose teaching with no
+            formula. RC inference and ethical caselets.
+       A JUDGEMENT key can only ever be `DELEGATED`, never recomputed.
+
+[P3-8] OTHER EXAMS. Scaffold only, and only after XAT. No CAT/SNAP/NMAT content, and
+       no CAT factual claims ship from a design note — verify each from its own
+       official notification when it is built.
+
+
+================================================================================
+P4 — HOUSEKEEPING
+================================================================================
+
+[P4-1] `docs/COVERAGE.md` is generated. Re-run `uv run xat-practice coverage` after
+       ANY content or shape change. A staleness test compares it.
+
+[P4-2] After adding a lesson: re-run `docs/DECISIONS.md` if a ruling changed, and
+       `AGENTS.md` if a new fact will bite. Both are quoted by the 10 agents in
+       `opencode.json`, which are themselves generated by `uv run xat-practice agents`.
+
+[P4-3] Do not hand-edit `opencode.json`. Edit `src/xat_practice/build_opencode.py`.
+
+[P4-4] Trap-count drift: `README.md` and `docs/DECISIONS.md` said "90 named traps"
+       while the code said 104. Corrected 2026-10-02. Numbers in prose are not
+       maintained by the build; the coverage ledger is.
+
+
+================================================================================
+STANDING RULES THAT APPLY TO EVERY ITEM ABOVE
+================================================================================
+
+- **Write the WRONG input first.** A check that has only ever seen a true statement
+  is untested. Each item above names its falsifying input where one exists.
+- **A check that fires on correct code is worse than no check.** Three times now a
+  grep matched a docstring or a moved field. Prefer `ast` over text search.
+- **Never hardcode a count in prose.** It goes stale within a day; the build does not
+  notice.
+- **`ruff` passing is not a build.** A deleted name imported AND USED is invisible to
+  it. Run the import.
+- **Gate per lesson.** A pool of lessons is not a paper (D23).
+- **Never hand G11 a level-filtered drill** (D26).
+- **Percentile claims name their strata or are `UNMEASURED`.**
+- **A right default is not neutral.** The blank penalty bug cost no time to find and
+  would have cost a learner real marks.

@@ -194,6 +194,15 @@ so the suite had only ever been run in one of its two legal forms. `pythonpath =
 "remember to type the longer command", it is deleting the dependency on which
 form you chose.
 
+## Where we are, and what is next
+
+**`todo.txt` is the continuation file.** If a session ends, the next one reads
+`AGENTS.md`, then `todo.txt`, and can carry on from it alone: every item there
+states its population, its evidence, and what "done" means.
+
+Written: **2 of 40 QA&DI subtopics (5.0%)**. `docs/COVERAGE.md` is the generated
+ledger and `docs/ADOPT_REJECT.md` records what five reviews said and what was done.
+
 ## Run it
 
 ### Sit a lesson in the browser — one command, then click

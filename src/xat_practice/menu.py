@@ -50,7 +50,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .registry import LESSONS
-from .syllabus import EXAMS, SECTIONS, TOPICS, ExamSpec, SectionSpec, Subtopic, part_of_id
+from .syllabus import EXAMS, SECTIONS, TOPICS, ExamSpec, SectionSpec, Subtopic, Topic, part_of_id
 
 #: Which Part-1 section each topic belongs to. The syllabus trains QA&DI only
 #: (D7), so this is the whole truth about the other two sections rather than a
@@ -214,18 +214,29 @@ p{margin:0 0 10px}
 .box{border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin:0 0 12px;
   background:#fff}
 .box.off{background:#f4f6f8;color:#5b6b7a}
-.tag{display:inline-block;font-size:11px;letter-spacing:.04em;text-transform:uppercase;
+.tag{display:inline-block;font-size:11px;letter-spacing:.04em;
   border:1px solid var(--line);border-radius:4px;padding:2px 6px;margin:0 6px 6px 0}
+/* A UNIT, not an acronym. MEASURED 2026-10-02: `text-transform: uppercase` here
+   rendered "q/yr" as "Q/YR", which reads as a quantity called Q. */
+.tag.unit{font-variant-numeric:tabular-nums;color:#5b6b7a}
 .tag.ok{border-color:var(--ok);color:var(--ok)}
 .tag.no{border-color:var(--line);color:#7a8894}
-.lesson{display:flex;flex-wrap:wrap;gap:10px;align-items:center;
-  justify-content:space-between;border:1px solid var(--line);border-radius:8px;
-  padding:12px 14px;margin:0 0 8px;background:#fff}
+.lesson{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:start;
+  border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin:0 0 8px;
+  background:#fff}
+.lesson > div:first-child{grid-column:1}
+.lesson > a{grid-column:2;grid-row:1;align-self:start;white-space:nowrap}
 .lesson a{color:var(--ink);font-weight:600;text-decoration:none;border-bottom:2px solid var(--ink)}
 .levels{font-size:12px;color:#5b6b7a}
 ul{margin:6px 0 0;padding-left:18px;color:#5b6b7a}
 code{background:#eef2f5;padding:1px 4px;border-radius:3px;font-size:13px}
 """
+
+
+def _subtopics_of(topic: Topic) -> list[Subtopic]:
+    """The subtopics of one topic, in declaration order."""
+    prefix = f"{topic.id}:"
+    return [x for x in _all_subtopics() if x.id.startswith(prefix)]
 
 
 def section_label(sec: SectionSpec, exam: ExamSpec) -> str:
@@ -291,19 +302,61 @@ def render_index_html(exam_id: str = "xat") -> str:
         o.append(f'<h2>{escape(sec.name)}</h2>')
         o.append(f'<div class="{cls}">')
         o.append(f"<p>{escape(section_label(sec, exam))}</p>")
-        if built:
-            o.append(f"<p>{len(mine)} lesson(s) written, ordered by measured "
-                     "questions-per-year.</p>")
-            for e in mine:
-                o.append(
-                    f'<div class="lesson"><div><h3>{escape(e.label)}</h3>'
-                    f'<p class="levels">{escape(e.subtopic_label)}</p></div>'
-                    f'<a href="{escape(e.href)}">Open &rarr;</a></div>')
-        elif not sec.counts_for_percentile(exam):
+        if not sec.counts_for_percentile(exam):
             o.append("<p>Out of scope: it does not move the percentile.</p>")
         else:
-            o.append("<p>Nothing written here yet. This project trains "
-                     "QA&amp;DI only.</p>")
+            # THE FULL TOPIC -> SUBTOPIC TREE, written ones as links and the rest
+            # marked.
+            #
+            # MEASURED 2026-10-02: this listed ONLY the written lessons, so QA&DI
+            # showed two rows and **15 of its 17 topics were absent with no marker**
+            # -- including `di` at 6.71 q/yr, the single largest block in the section
+            # and the biggest hole in the project. A learner saw "QA&DI, 2 lessons"
+            # and could not tell whether the other 38 subtopics did not exist, did
+            # not matter, or were coming. That reads as a failed search.
+            #
+            # Whole SECTIONS already carried a "not written" marker; topics inside a
+            # written section did not, which is the asymmetry that hid it.
+            topics = [t for t in TOPICS
+                      if t.exam_id == exam.exam_id and t.section_id == sec.section_id]
+            if not topics:
+                # MEASURED 2026-10-02: this fell through to "0 of 0 subtopics
+                # written", which is worse than silence -- it implies there was
+                # nothing to write, when the truth is that **no syllabus exists at
+                # all** for these 26 + 21 = 47 counted questions. D7 trains QA&DI
+                # only, so the page must say that rather than imply a finished
+                # section that happens to be empty.
+                o.append(f"<p><strong>{sec.questions} questions carry a raw "
+                         "score and this project trains QA&amp;DI only.</strong> "
+                         f"{sec.name} has no syllabus here yet: no topics and no "
+                         "named misconceptions are defined, so nothing can be "
+                         "written or checked against.</p>")
+                o.append("</div>")
+                continue
+            topics.sort(key=lambda t: (-t.weight, t.id))
+            written = len(mine)
+            o.append(f"<p>{written} of {sum(len(_subtopics_of(t)) for t in topics)} "
+                     "subtopics written, ordered by measured questions-per-year.</p>")
+            for t in topics:
+                subs = _subtopics_of(t)
+                done_here = [e for e in mine if e.topic_id == t.id]
+                cls = "" if done_here else "off"
+                o.append(f'<div class="lesson {cls}">')
+                o.append(f"<div><h3>{escape(t.name)}"
+                         f'<span class="tag unit">{t.weight:.2f} q/yr</span></h3>')
+                for e in done_here:
+                    o.append(
+                        f'<p class="levels"><strong>WRITTEN</strong> &mdash; '
+                        f'{escape(e.subtopic_label)}</p>')
+                others = [x for x in subs
+                          if not any(e.subtopic_id == x.id for e in done_here)]
+                if others:
+                    names = ", ".join(escape(x.name) for x in others)
+                    o.append(f'<p class="levels">not written: {names}</p>')
+                o.append("</div>")
+                if done_here:
+                    o.append(f'<a href="{escape(done_here[0].href)}">Open &rarr;</a>')
+                o.append("</div>")
         o.append("</div>")
 
     o.append(f'<p class="sub" style="margin-top:24px">{len(entries)} of {total} '

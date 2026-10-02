@@ -147,8 +147,17 @@ def test_the_page_does_not_claim_the_unbuilt_sections_exist():
     assert missing, "the premise: some sections are unbuilt"
     for sec in missing:
         assert sec.name in plain, f"{sec.name} is missing from the page entirely"
-    # Counted-but-unbuilt must say "nothing written"; GK must say it is excluded.
-    assert "Nothing written here yet" in plain
+    # MEASURED 2026-10-02: VA&LR and DM used to render "0 of 0 subtopics
+    # written", which implies there was nothing to write. The truth is that no
+    # syllabus exists for 26 + 21 = 47 counted questions, and the page must say so.
+    for name in ("VA&LR", "DM"):
+        assert name in plain, name
+    assert "no syllabus here yet" in plain, (
+        "a counted section with no topics must say it has NO SYLLABUS, not "
+        "'0 of 0 written' -- the first is unfinished, the second reads as done"
+    )
+    assert "0 of 0" not in plain, "'0 of 0 subtopics written' is a false statement"
+    # GK is excluded for a different reason and must say so.
     assert "does not move the percentile" in plain or "EXCLUDED" in plain
 
 
@@ -293,3 +302,68 @@ def test_serve_with_no_lesson_and_nothing_built_says_so(monkeypatch, capsys,
     err = capsys.readouterr().err
     assert "nothing built" in err
     assert "uv run xat-practice build" in err, "the fix must be in the message"
+
+
+def test_the_page_shows_every_topic_in_a_written_section_not_only_the_written_ones():
+    """THE navigation check, asked for directly on 2026-10-02: is
+    XAT -> Section -> Topic -> Subtopic actually shown?
+
+    MEASURED: it was NOT, for the lower three levels. The page listed only the
+    written lessons, so QA&DI showed **2 rows** and **15 of its 17 topics were
+    absent with no marker** -- including `di` at 6.71 q/yr, the single largest block
+    in the section and the biggest hole in the project. Whole SECTIONS carried a
+    "not written" marker; topics inside a written section did not, and that
+    asymmetry is what hid it. A learner could not tell whether the other 38
+    subtopics did not exist, did not matter, or were coming.
+
+    So every topic in a written section must appear, in measured-weight order, with
+    its subtopics named and the unwritten ones marked.
+    """
+    from xat_practice.syllabus import EXAMS, SECTIONS, TOPICS, subtopics
+
+    plain = unescape(M.render_index_html())
+    subs = subtopics()
+    for sec in SECTIONS.values():
+        topics = [t for t in TOPICS
+                  if t.exam_id == sec.exam_id and t.section_id == sec.section_id]
+        if not sec.counts_for_percentile(EXAMS["xat"]) or not topics:
+            continue
+        for t in topics:
+            assert t.name in plain, (
+                f"{t.id} ({sec.name}, {t.weight:.2f} q/yr) is missing from the page. "
+                "Every topic in a written section must be listed, written or not."
+            )
+            for sub in (x for x in subs.values() if x.topic_id == t.id):
+                assert sub.name in plain, (
+                    f"{sub.id} is missing; a topic row with no subtopics named "
+                    "does not show the learner what the subtopic IS"
+                )
+
+
+def test_the_written_and_pending_rows_are_distinguishable_on_the_page():
+    """Both states must be visible: 2 written, 38 pending, and the page must not
+    imply the other 38 do not exist."""
+    from xat_practice.registry import LESSONS
+
+    plain = unescape(M.render_index_html())
+    assert plain.count("WRITTEN") == len(LESSONS), (
+        f"{plain.count('WRITTEN')} WRITTEN markers for {len(LESSONS)} lessons"
+    )
+    assert "not written:" in plain, (
+        "the pending subtopics must be named, or the page reads as finished"
+    )
+
+
+def test_the_measured_weight_is_shown_as_a_unit_and_not_as_an_acronym():
+    """MEASURED 2026-10-02: `text-transform: uppercase` on the tag rendered
+    "q/yr" as **Q/YR**, which reads as a quantity named Q."""
+    # ON THE RENDERED TEXT, not the source. The first version asserted against the
+    # HTML and matched "Q/YR" inside the CSS COMMENT explaining the fix -- correct
+    # code, false alarm, the third time in this project a grep fired on a
+    # comment. Strip the comments, then compare.
+    import re as _re
+
+    body = M.render_index_html()
+    stripped = _re.sub(r"/\*.*?\*/", "", body, flags=_re.S)
+    assert "q/yr" in stripped
+    assert "Q/YR" not in stripped, "the unit was uppercased somewhere in the markup"
