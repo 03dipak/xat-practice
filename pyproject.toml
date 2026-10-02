@@ -47,6 +47,23 @@ build-backend = "uv_build"
 testpaths = ["tests"]
 addopts = "--strict-markers --cov=src/xat_practice --cov-report=term-missing"
 
+# `pythonpath = ["."]` is NOT a convenience. It makes the suite pass under BOTH
+# `pytest` and `python -m pytest`.
+#
+# MEASURED 2026-10-02: `pytest` failed 7 tests with `ModuleNotFoundError: No
+# module named 'tests'` and `python -m pytest` passed all 292. Same interpreter,
+# same venv, same code -- the only difference is that `-m` puts the CWD on
+# `sys.path[0]` and the console script does not. `tests/test_api.py` and
+# `tests/test_lesson1.py` do `from tests.test_gates import at_level`, which needs
+# the project root importable, and `tests/` has no `__init__.py`.
+#
+# It went unnoticed because EVERY documented command used `python -m pytest`. So
+# the suite had only ever been run in one of its two legal forms, and a reader who
+# typed the shorter one got 7 failures that look like a broken checkout. Do not
+# remove this in favour of adding `tests/__init__.py`: the `python -m` form is the
+# one that hides the dependency, and this line is what makes the short form honest.
+pythonpath = ["."]
+
 [tool.ruff]
 target-version = "py312"
 line-length = 100

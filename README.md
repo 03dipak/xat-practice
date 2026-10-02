@@ -28,18 +28,18 @@ Waves 0 and 1 landed, plus **Lesson 2, Geometry: areas and similar shapes**.
 recomputed.** Measured on 2026-10-02:
 
 ```
-.venv/bin/python -m pytest -q --strict-markers --cov      -> 292 passed
-.venv/bin/python -m coverage report --include="src/xat_practice/*.py" \
+uv run pytest -q --strict-markers --cov                     -> 296 passed
+uv run coverage report --include="src/xat_practice/*.py" \
     --fail-under=95 --precision=2                        -> TOTAL 95.86%
-.venv/bin/ruff check src tests tools                     -> All checks passed
-.venv/bin/mypy src                                       -> no issues, 12 files
-.venv/bin/xat-practice gates
+uv run ruff check src tests tools                        -> All checks passed
+uv run mypy src                                          -> no issues, 12 files
+uv run xat-practice gates
     population: 4 items = 1 lesson, lesson-01-simple-interest, pl_int:simple-interest
       admitted: 4/4   refused: 0  (rate 0.0 over 4)
     population: 4 items = 1 lesson, lesson-02-geometry-similarity, geo_mens:similarity-and-area-ratios
       admitted: 4/4   refused: 0  (rate 0.0 over 4)
     lessons: 2   items gated: 8   refused: 0 across 8
-.venv/bin/python tools/ui_probe.py --lesson lesson-02-geometry-similarity
+uv run python tools/ui_probe.py --lesson lesson-02-geometry-similarity
                                                           -> 47/47
 ```
 
@@ -111,7 +111,7 @@ uv --version
 ```
 
 `uv` manages the virtualenv, the interpreter and the installs. It is not
-optional decoration — the commands below assume `.venv/bin/xat-practice` exists.
+optional decoration — the commands below go through `uv run`.
 
 ### 3. Clone and install
 
@@ -139,7 +139,7 @@ different sympy and a different coverage number from the same code.
 Verify:
 
 ```bash
-.venv/bin/xat-practice weightage
+uv run xat-practice weightage
 ```
 
 It must print `population: 196 questions = 28 per paper x 7 papers, 2020-2026`
@@ -152,35 +152,57 @@ closes.
 > Every console script in `.venv/bin/` shebangs an absolute interpreter path, so
 > a directory rename breaks all of them at once.
 
-### `uv run` vs `.venv/bin/...` — which to use when
+### `uv run` for everything
 
-Both work. `uv run mypy src` takes **1.58s** against **0.36s** for
-`.venv/bin/mypy src` (MEASURED), and that is fine for day-to-day use.
+**Use `uv run`.** The previous version of this file said the opposite, on the
+ground that `uv run` is not read-only: it resolves and syncs the environment
+before running the command, and a gate is a measurement, so the measurement
+should not mutate the box it measures.
 
-The gate commands use the direct path anyway, for one reason: **`uv run` is not
-read-only.** It resolves and syncs the environment *before* running the command,
-so it can create `uv.lock` and change what is installed as a side effect of
-asking for a type check. A gate is a *measurement*, and the measurement should
-not mutate the box it measures.
+**That reason no longer holds, and MEASURED 2026-10-02: `uv run` changed 0 files
+under `.venv`.** Before and after a `uv run` invocation, the set of installed
+`*.dist-info` directories hashes identically and `find .venv -newer <stamp>`
+returns nothing:
 
-| | use |
-|---|---|
-| `.venv/bin/mypy src` | the four gate commands, and any number you intend to quote |
-| `uv run mypy src` | scratch work, when you do not care what it syncs |
+```
+before:           08c1b4f76dd4f381091dd6e084972e7e
+after uv run:     08c1b4f76dd4f381091dd6e084972e7e
+files .venv touched: 0
+```
 
-Once `uv.lock` is committed the difference is much smaller, because `uv run` has
-nothing to re-resolve. The separation is kept anyway, because it is the
-difference between reading a measurement and making one.
+It is read-only *because* the two things that made it dangerous are both in
+place: `uv.lock` is committed, so there is nothing to re-resolve, and every tool
+is declared in `[dependency-groups] dev`, so there is nothing to prune. Remove
+either and the old warning comes back — which is why it is recorded as a
+condition and not as a preference.
+
+There is one real cost, and it is small: `uv run` adds about **0.05s** per
+invocation over the direct path (MEASURED, 0.09s vs 0.04s on a bare import).
+
+### The one place the direct path is still right
+
+`python -m pytest` and `pytest` were **not** the same command, and only one of
+them worked. MEASURED 2026-10-02: bare `pytest` failed **7 of 299** with
+`ModuleNotFoundError: No module named 'tests'`, while `python -m pytest` passed
+all 292. Same interpreter, same venv, same code — `-m` puts the CWD on
+`sys.path[0]` and the console script does not, and `tests/test_api.py` does
+`from tests.test_gates import at_level`.
+
+It went unnoticed because **every** documented command used `python -m pytest`,
+so the suite had only ever been run in one of its two legal forms. `pythonpath =
+["."]` in `pyproject.toml` now makes both work, which is the point: the fix is not
+"remember to type the longer command", it is deleting the dependency on which
+form you chose.
 
 ## Run it
 
 ### Sit a lesson in the browser
 
 ```bash
-.venv/bin/xat-practice build     # writes out/lesson-01-simple-interest/ and
+uv run xat-practice build        # writes out/lesson-01-simple-interest/ and
                                  # out/lesson-02-geometry-similarity/
-.venv/bin/xat-practice serve     # lesson 1 at http://127.0.0.1:8000/
-.venv/bin/xat-practice serve --lesson lesson-02-geometry-similarity
+uv run xat-practice serve        # lesson 1 at http://127.0.0.1:8000/
+uv run xat-practice serve --lesson lesson-02-geometry-similarity
 ```
 
 `serve --lesson` takes a **`lesson_id`** from the registry (a path also works). It
@@ -228,10 +250,10 @@ similar shapes)**, four rungs each. The sections are still to come — see
 ### Check the UI in a real browser
 
 ```bash
-.venv/bin/xat-practice build
-.venv/bin/python tools/ui_probe.py                    # 47 checks, exit 1 on failure
-.venv/bin/python tools/ui_probe.py --lesson lesson-02-geometry-similarity
-.venv/bin/python tools/ui_probe.py --shot-dir /tmp/ui # start/options/result PNGs
+uv run xat-practice build
+uv run python tools/ui_probe.py                    # 47 checks, exit 1 on failure
+uv run python tools/ui_probe.py --lesson lesson-02-geometry-similarity
+uv run python tools/ui_probe.py --shot-dir /tmp/ui # start/options/result PNGs
 ```
 
 The PNGs are the **real** `index.html` with the **real** stylesheet, driven by
@@ -267,10 +289,10 @@ agent owns it.
 All four, not three:
 
 ```bash
-.venv/bin/ruff check src tests
-.venv/bin/mypy src
-.venv/bin/python -m pytest -q --strict-markers --cov
-.venv/bin/python -m coverage report --include="src/xat_practice/*.py" \
+uv run ruff check src tests tools
+uv run mypy src
+uv run pytest -q --strict-markers --cov
+uv run coverage report --include="src/xat_practice/*.py" \
     --fail-under=95 --precision=2
 ```
 
@@ -301,7 +323,7 @@ src/xat_practice/
   bundle.py          static bundle + paper/key file split
   cli.py             8 verbs
   registry.py       every lesson that EXISTS, in one place
-tests/               292 tests, 9 modules
+tests/               296 tests, 9 modules
 tools/
   ui_probe.html       the probe page a browser actually runs
   ui_probe.py         serves the bundle, drives Chromium, reports

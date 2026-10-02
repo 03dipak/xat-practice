@@ -280,9 +280,27 @@ teach.
 - **`uv sync` PRUNES.** It removes anything in `.venv` that is not declared in
   `pyproject.toml`. Before `[dependency-groups] dev` existed it deleted mypy,
   pytest, pytest-cov and ruff — the four tools the gates are run with. Declare
-  every tool there. `uv run` is fine for scratch and is not used for the gate
-  commands, because it resolves and syncs the environment *before* running, and a
-  measurement should not mutate the box it measures.
+  every tool there.
+- **`uv run` is read-only HERE, and the gate commands use it. This file used to
+  say otherwise.** The old claim was that `uv run` resolves and syncs *before*
+  running, so a measurement would mutate the box it measures. MEASURED
+  2026-10-02: it changed **0 files** under `.venv` — the `*.dist-info` set hashes
+  identically before and after, and `find .venv -newer <stamp>` is empty. It is
+  read-only **because** `uv.lock` is committed and every tool is declared, so
+  there is nothing to re-resolve and nothing to prune. **Remove either and the
+  old warning comes back**, so this is a condition, not a preference.
+  Cost is ~0.05s per call (MEASURED). The owner ruled `uv run` for all documented
+  commands on 2026-10-02.
+- **`python -m pytest` and `pytest` were NOT the same command, and only one
+  worked.** MEASURED: bare `pytest` failed **7 of 299** with `ModuleNotFoundError:
+  No module named 'tests'`; `python -m pytest` passed all **292**. Same
+  interpreter, same venv, same code — `-m` puts the CWD on `sys.path[0]` and the
+  console script does not, and `tests/test_api.py` does
+  `from tests.test_gates import at_level`. Invisible because **every** documented
+  command used the long form, so the suite had only ever run in one of its two
+  legal forms. `pythonpath = ["."]` in `pyproject.toml` fixes it for both. **The
+  general trap: a suite with an undeclared import dependency looks identical from
+  inside and behaves differently outside the command you always type.**
 - **Display strings are not arithmetic.** `Rs 200` and `2 : 3` do not parse as
   sympy, and `14,400` parses to the TUPLE `(14, 400)` rather than failing.
   `Item` carries `option_values` for the arithmetic and `G14` asserts the value
@@ -307,10 +325,10 @@ teach.
 All re-derivable. Command, population, and limitation stated each time.
 
 ```
-.venv/bin/ruff check src tests
-.venv/bin/mypy src
-.venv/bin/python -m pytest -q --strict-markers --cov
-.venv/bin/python -m coverage report --include="src/xat_practice/*.py" \
+uv run ruff check src tests tools
+uv run mypy src
+uv run pytest -q --strict-markers --cov
+uv run coverage report --include="src/xat_practice/*.py" \
     --fail-under=95 --precision=2
 ```
 
