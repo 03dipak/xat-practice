@@ -297,3 +297,150 @@ than any single argument:
 The two external reviews reached the same architecture/content split without seeing
 each other, and both rated the **exam-model** layer as the weak half. That is the
 part §1 fixed.
+
+---
+
+## Review 6 — two external UI-automation reviews (2026-10-02)
+
+Two independent LLM reviews (Claude.ai and Perplexity.ai) of "what UI automation
+must check for this LLD". Both, unprompted, opened with the same warning:
+
+> If the test reads the expected answer from the same `paper.json` the page
+> renders, a wrong key passes.
+
+**That is not a theoretical caution. It is a live defect in this suite, and it is
+the single most valuable thing either review said.** Everything below is ordered by
+what the reviews got *right*, because that is rare enough to be worth recording.
+
+### ADOPTED — and one of them was a P0 we had not seen
+
+**A1. The oracle must come from Python, never from the bundle or the DOM.**
+Adopted as **TASK-064, P0**. Both reviews stated it; we then MEASURED it:
+
+- `tools/ui_probe.stage()` builds its expected keys by reading
+  `answerkey.json` — *the same file the page fetches inside `check()`*.
+- The docstring claims this "lets the probe assert that the browser's own verdict
+  agrees with the solver rather than with itself". **That claim is false.**
+- Falsifying input: plant a valid-index **wrong** key on `L1-F` (0 → 2). Result:
+
+  ```
+  PASS  the-browser-verdict-matches-the-recomputed-key
+        browser said "Not correct. The answer is C.", key is index 2
+  58/58 UI checks passed
+  ```
+
+  The page rendered C because the file says 2. The probe expected C because the
+  file says 2. **They agree with each other.** A check named
+  `the-browser-verdict-matches-the-recomputed-key` cannot fail on a wrong key.
+
+  Note the earlier, weaker version of this measurement: planting the wrong key on
+  `L1-E` changed nothing at all, because the check uses `Object.keys(EXPECTED)[0]`
+  — which is `L1-F`. **An item that is not the one under test is a silent no-op.**
+
+**A2. "Change the marking in the fixture and the UI follows with no code change."**
+Adopted (TASK-066, P2). This is the strongest available anti-hardcode test and it
+is exactly our "two rules that disagree" defect aimed at `mark_correct`: if the
+bundle carried its own copy of the marking, this would fail.
+
+**A3. The 8-vs-9 blank boundary, sitting ON the boundary.** Adopted (TASK-067).
+Both reviews independently state the penalty spans the whole of Part 1, which
+**corroborates TASK-001** from outside the project. This is the highest-value
+XAT-specific UI assertion we can write.
+
+**A4. Zero console errors and zero failed network requests on every page.** Adopted
+(TASK-068). This is the cheapest possible detector for the whole Wave-1 defect
+class: `lesson.js` failing to parse for a whole session while 161 tests passed is
+precisely an uncaught `SyntaxError` that nobody read.
+
+**A5. Error states are a first-class assertion: a missing or corrupt
+`paper.json` must show a recoverable error, never a blank page.** Adopted
+(TASK-069). Directly extends the measured `file://` failure.
+
+**A6. Deep link, browser Back, Forward, and Refresh must be exercised.** Adopted
+(TASK-070). Currently **0 of 4** covered, and `ORDER` being data rather than a
+literal is exactly the change that could have broken them.
+
+**A7. Keyboard-only journey; double-click submit records one attempt; no early
+solution leak before commit.** Adopted (TASK-032, already open). The leak check is
+scoped to the **worked example** — see the containment note below.
+
+**A8. Persistence must be a DECLARED product rule before it is automated.** Adopted
+(TASK-071). The decision stands: **no persistence** — `Cache-Control: no-store`,
+answers in memory, no `localStorage`. Declaring it is what makes "refresh resets"
+a testable contract instead of an accident.
+
+**A9. No fixed sleeps; wait on a condition; capture screenshot, console, URL and
+trace on failure; run the import smoke and `build` before the UI suite.** Adopted.
+All of this is already the project's discipline, and both reviews arrived at it
+independently — which is worth recording as external corroboration of the
+housekeeping rules rather than as new work.
+
+**A10. Per-lesson and parameterised from the registry, never typed into a test.**
+Already D25. Reaffirmed, not adopted as new.
+
+### REJECTED — with the reason, because "we read it" is not the same as "we did it"
+
+**R1. A TypeScript Playwright `*.spec.ts` suite. REJECTED.**
+We are a Python project whose existing probe already drives headless Chromium and
+reports 58/58 per lesson. A second runner, a second browser driver and `node` as a
+new runtime dependency would mean **two places per fact**, which is precisely the
+D12 shape this project has now been bitten by repeatedly. The reviews assume
+Playwright; we have a working tool. Adopting both would make the UI *less*
+trustworthy, not more.
+
+**R2. Per-question routes (`/xat/qa-di/<lesson>/question/2`) and a section index
+page per exam. REJECTED — this is a different product, not a test change.**
+We deliberately serve **one page per lesson holding all four rungs**. That design
+is the measured fix for `ORDER` being a hardcoded literal and for `loadPaper(id)`
+receiving `''`. The reviews then ask us to test that state survives the URL — i.e.
+they would have us re-introduce the state-in-URL we removed on purpose.
+
+**R3. Building `localStorage` persistence — with a versioned schema, migrations and
+stale-schema reset — so the persistence tests have something to test. REJECTED.**
+This is the clearest trap in either review, and it is worth naming: *do not build
+a feature nobody asked for in order to satisfy a test.* The product has no
+persistence by decision. The test asserts the decision (refresh resets), which is
+honest; a versioned storage layer would be a fiction.
+
+**R4. 28-question section mocks, 75-question full mocks, question palettes, timers,
+a fake clock and a submit-confirmation modal as *current gate requirements*.
+REJECTED as a gate; ADOPTED as roadmap.** None of it exists. Adopting ~20
+scenarios that can only fail puts a permanently red gate in place, and a red gate
+teaches its reader to ignore it. Recorded as TASK-072 (P1) for the phase that
+builds them.
+
+**R5. Chromium + WebKit + Firefox across three viewports at two zoom levels, as a
+commit gate. REJECTED as a gate; ADOPTED as nightly.** With two lessons this is 27
+runs per lesson, and the layout defect class we actually hit (white-on-white) was
+caught by **one** contrast check. Also: `ui_probe.py` deliberately **exits 2 when
+no browser is present**, so adding a browser that cannot run makes the gate
+unrunnable rather than strict.
+
+**R6. `role="radio"` and a real radio group for the five options. REJECTED for now;
+recorded as a product decision (TASK-073, P2), not a test requirement.** A radio
+group fights the commit barrier, because the options must be *inert until the
+learner commits*. The accessible-name discipline is still adopted — but as a check
+that **every control has a stable accessible name**, not as a Playwright API.
+
+**R7. The `UiScenario` dataclass with `part_id`, `mode`, `expected_url`,
+`expected_score`, `expected_progress`, `expected_persistence`. PARTIALLY REJECTED.**
+The fields that map to something real today (`lesson_id`, `level`,
+`initial_state`, `expected_visible_state`) are adopted. A schema where six of
+thirteen fields are `None` for every current scenario is a schema for a future
+product; writing it now means writing dead fields that no test reads.
+
+### What NEITHER review could have told us
+
+Worth stating, because it is the boundary of the tool:
+
+- **Both reviews are written against a product that is larger than ours** — mocks,
+  palettes, timers, GK, two exams. Roughly 70% of their line items are roadmap.
+- **Neither can know our UI is a static shell plus a JS-built DOM.** MEASURED: the
+  served `index.html` contains **zero** `<button>` elements; all nine are created
+  by `lesson.js`. So a text assertion over the HTML is *structurally incapable* of
+  finding an interactive bug. Every one of our 161 Wave-1 tests was of that shape.
+- **Neither found the dead correct-answer path** (A2 below) — that came from
+  MEASURED, after their warning told us where to look. External review is a
+  pointer, not an oracle. The same rule this project applies to model-asserted keys
+  applies to model-written test plans: *a review is an opinion until something
+  falsifies it.*

@@ -452,3 +452,80 @@ the material:
   items; every item to date is hand-authored with its keys re-derived.
 - **The UI route** (TASK-010), which should be built *after* the content, because
   until then "give me more" can only produce an empty drill.
+
+---
+
+## 13. UI automation: the oracle must not come from the bundle (2026-10-02)
+
+Two external reviews (Claude.ai, Perplexity.ai) were assessed against this LLD;
+every adopt/reject with its reason is in `docs/ADOPT_REJECT.md` §Review 6. This
+section records only the one thing that changed the design.
+
+### 13.1 The defect they found, MEASURED
+
+Both reviews opened with the same warning: *"if the test reads the expected answer
+from the same `paper.json` the page renders, a wrong key passes."*
+
+Our probe did exactly that.
+
+`tools/ui_probe.stage()` builds its expected keys from **`answerkey.json`** — and
+`answerkey.json` is the file the page itself fetches inside `check()`. Its
+docstring claims this *"lets the probe assert that the browser's own verdict agrees
+with the solver rather than with itself"*. **That is false.**
+
+Falsifying input: plant a valid-index **wrong** key on the item the probe actually
+uses.
+
+```
+planted valid-index wrong key on L1-F: 0 -> 2
+
+PASS  the-browser-verdict-matches-the-recomputed-key
+      browser said "Not correct. The answer is C.", key is index 2
+58/58 UI checks passed
+```
+
+The page rendered **C** because the file says 2. The probe expected **C** because
+the file says 2. **They agree with each other.** A check named
+`the-browser-verdict-matches-the-recomputed-key` cannot fail on a wrong key.
+
+A weaker version of the same measurement is worth keeping: planting the wrong key
+on `L1-E` changed **nothing**, because the check addresses
+`Object.keys(EXPECTED)[0]`, which is `L1-F`. **An item that is not the one under
+test is a silent no-op.**
+
+### 13.2 The second defect, found by looking where they pointed
+
+```js
+const wantWrong = (expect + 1) % 5;
+opts[wantWrong].click();
+const expectedVerdict = expect === wantWrong ? 'Correct.' : 'Not correct.';
+```
+
+`wantWrong` is never equal to `expect`, so `expectedVerdict` is **always**
+`'Not correct.'` and the `'Correct.'` branch is **dead code**. The probe has never
+once asserted that a *correct* answer renders as correct — the single most
+important behaviour in the product. 58/58 was green and never touched it.
+
+### 13.3 The rule this yields
+
+> **The expected value always comes from Python — `Solver`, `registry`, `EXAMS` —
+> never from the DOM and never from the bundle. The browser test proves only that
+> the UI faithfully shows and acts on it.**
+
+This is the same shape as D1, applied to the test harness instead of the item:
+a key nobody re-derived is an opinion, and so is a key read back out of the file the
+page is being judged against. `G5` still catches a wrong key at build time, but a
+harness that cannot fail is not evidence of anything, and it is what made the
+wrongness invisible for this long.
+
+### 13.4 What the probe is, now stated precisely
+
+| | |
+|---|---|
+| it IS | a check that the browser **faithfully renders** a value Python computed |
+| it is NOT | a check that the value is **right** — that is `G5` and `Solver.verify` |
+| denominator | MEASURED: the served `index.html` holds **0** `<button>` elements; `lesson.js` builds all **9**, of which **4 carry no `id`**. "58/58" is a count with no denominator until a control inventory exists (TASK-032) |
+
+A consequence of the last row, and the reason text-level UI tests in this project
+kept passing: **the interactive DOM does not exist in the HTML at all**, so a
+search over the HTML is structurally incapable of finding an interactive bug.

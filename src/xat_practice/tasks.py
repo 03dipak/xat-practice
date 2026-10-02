@@ -219,6 +219,218 @@ TASKS: tuple[Task, ...] = (
 
     # ------------------------------------------------------------- LESSON LOOP
     Task(
+        id="TASK-074", type="task", epic="LESSON-LOOP", priority="P0", status="OPEN",
+        owner="mentor",
+        evidence=("supply measured (TASK-062: 8 templates, 59 single-digit "
+                  "instances, 0 empty); DEMAND UNMEASURED -- the click handler "
+                  "does not exist, so no browser session can disprove it yet"),
+        title="the ONE-CLICK button: give more single-digit questions at this rung",
+        why=("The owner's instruction in full: 'if learner wants more question that "
+             "should be given to him, but he ask more practice we can provided "
+             "this only 1-9 question at one click similarly for levels'. TASK-060 "
+             "built the shape, TASK-061 the predicate, TASK-062 the supply. None "
+             "of them is the BUTTON, and the button is the entire feature. "
+             "MENTOR ACTION because the ordering is the judgement: the button must "
+             "not be built until the supply passes its gates, because a button that "
+             "returns an empty drill teaches the learner that the tool is broken."),
+        acceptance=("one click on a rung serves the next N single-digit items at "
+                    "THAT level, using LEVEL_DRILL_SHAPES[level] so G11 cannot eat "
+                    "them; the served set is gated BEFORE it is shown; zero items "
+                    "available renders an honest 'not written yet' state rather "
+                    "than an empty test; works on all four rungs"),
+        falsifying_input=("with the supply's six failing tests unresolved, click "
+                          "the button and observe the empty drill -- that is the "
+                          "defect TASK-062's failures would cause at the UI"),
+        blocked_by="TASK-062",
+        notes=("Route to build AFTER TASK-062 is DONE. One click, no prompt: the "
+               "learner's whole instruction is 'more, 1-9'. Adding a count field "
+               "or a level selector re-introduces a menu the owner rejected."),
+        source="owner 2026-10-02",
+    ),
+    Task(
+        id="TASK-064", type="task", epic="UI-AUTOMATION", priority="P0",
+        status="OPEN", owner="tester",
+        evidence=("MEASURED 2026-10-02: planted a valid-index wrong key on L1-F "
+                  "(0 -> 2); probe printed 'browser said \"Not correct. The answer "
+                  "is C.\", key is index 2' and PASSED 58/58"),
+        title="the probe's answer oracle is CIRCULAR -- it reads the file it judges",
+        why=("Two external reviews opened with the same warning: if the test reads "
+             "the expected answer from the file the page renders, a wrong key "
+             "passes. `stage()` builds `expected` from `answerkey.json`, which is "
+             "the file the page fetches inside `check()`. The docstring claims the "
+             "probe asserts the verdict 'agrees with the solver rather than with "
+             "itself'. It agrees with itself. 58/58 was measuring self-consistency "
+             "and reading it as verification."),
+        acceptance=("the probe's expected values are computed in Python from "
+                    "`Solver().solve(item)` over the REGISTRY items, never parsed "
+                    "from `answerkey.json`; a planted wrong key makes the probe FAIL"),
+        falsifying_input=("plant a valid-index wrong key in the built "
+                          "`answerkey.json` and require the probe to go red. "
+                          "MEASURED today it stays green, which is the defect"),
+        blocked_by="",
+        notes=("A second, weaker measurement worth keeping: planting the wrong key "
+               "on L1-E changed NOTHING, because the check addresses "
+               "`Object.keys(EXPECTED)[0]` which is L1-F. An item that is not the "
+               "one under test is a silent no-op."),
+        source="external reviews 2026-10-02 (Claude.ai + Perplexity.ai)",
+    ),
+    Task(
+        id="TASK-065", type="task", epic="UI-AUTOMATION", priority="P0",
+        status="OPEN", owner="tester",
+        evidence=("MEASURED 2026-10-02: `wantWrong = (expect + 1) % 5` can never "
+                  "equal `expect`, so `expectedVerdict` is always 'Not correct.' "
+                  "and the 'Correct.' branch is dead code"),
+        title="the probe NEVER asserts that a CORRECT answer renders as correct",
+        why=("Found while confirming TASK-064, i.e. only because the reviews "
+             "pointed at the right file. The verdict check always clicks "
+             "`wantWrong`, so the happy path -- right answer, 'Correct.' -- is "
+             "never exercised at all. 58/58 was green and never touched the one "
+             "behaviour that matters most. `G5` proves the key is right; nothing "
+             "proved the page SAYS so."),
+        acceptance=("the probe clicks the keyed option and asserts 'Correct.', and "
+                    "clicks a distractor and asserts 'Not correct.' plus that the "
+                    "named trap text appears for the chosen option only"),
+        falsifying_input=("delete the correct-answer branch and confirm the probe "
+                          "still reports 58/58 -- MEASURED today it does, so the "
+                          "branch is currently untested"),
+        blocked_by="",
+        source="external reviews 2026-10-02, confirmed by measurement",
+    ),
+    Task(
+        id="TASK-066", type="task", epic="UI-AUTOMATION", priority="P2",
+        status="TODO", owner="tester",
+        evidence="the review's parameter table, adopted in ADOPT_REJECT.md A2",
+        title="change the MARKING in the fixture and require the UI to follow",
+        why=("The strongest available anti-hardcode test, and aimed squarely at "
+             "our 'two rules that disagree' defect: if the bundle carries its own "
+             "copy of the marking instead of reading `SectionSpec`, a UI test that "
+             "changes +1/-0.25 to +3/-1 with no code change will fail."),
+        acceptance=("a fixture with different marking changes the displayed score "
+                    "with no source change"),
+        falsifying_input=("hardcode a score in the bundle and confirm the test goes "
+                          "red"),
+        source="external reviews 2026-10-02",
+    ),
+    Task(
+        id="TASK-067", type="task", epic="UI-AUTOMATION", priority="P0",
+        status="TODO", owner="tester",
+        evidence="adopted in ADOPT_REJECT.md A3; both reviews state it independently",
+        title="the 8-vs-9 blank boundary, asserted ON the boundary",
+        why=("The highest-value XAT-specific UI assertion available, and both "
+             "external reviews state the penalty spans the whole of Part 1 -- "
+             "independent external corroboration of TASK-001. Eight blanks cost "
+             "nothing; the ninth costs -0.10. The learner strategy inverts there, "
+             "so a UI that rounds it either way teaches a wrong tactic."),
+        acceptance=("8 blanks across Part 1 -> no deduction; 9 -> -0.10; 10 spread "
+                    "across QA-DI/DM/VALR -> -0.20, computed from `PartSpec`"),
+        falsifying_input=("move the threshold to 7 in the fixture and require the "
+                          "test to go red"),
+        source="external reviews 2026-10-02",
+    ),
+    Task(
+        id="TASK-068", type="task", epic="UI-AUTOMATION", priority="P1",
+        status="TODO", owner="ui-inspector",
+        evidence="adopted in ADOPT_REJECT.md A4",
+        title="zero console errors and zero failed network requests, every page",
+        why=("The cheapest possible detector for the whole Wave-1 defect class. "
+             "`lesson.js` failed to parse for an entire session while 161 tests "
+             "passed, because every one of them asserted on the file's TEXT. An "
+             "uncaught SyntaxError is exactly the thing nobody was reading."),
+        acceptance=("every page load and every lesson reports zero console errors, "
+                    "zero unhandled rejections and zero failed requests"),
+        falsifying_input=("inject a deliberate `throw` into the probe's own "
+                          "injected script and require the check to go red"),
+        source="external reviews 2026-10-02",
+    ),
+    Task(
+        id="TASK-069", type="task", epic="UI-AUTOMATION", priority="P1",
+        status="TODO", owner="ui-inspector",
+        evidence="adopted in ADOPT_REJECT.md A5",
+        title="a missing or corrupt paper.json must show a RECOVERABLE error",
+        why=("Directly extends the measured `file://` failure, where the page "
+             "rendered half of what was on disk with no error anywhere. A blank "
+             "page teaches the learner the tool is broken; a named error with a "
+             "retry teaches them what happened."),
+        acceptance=("deleting and corrupting `paper.json` each produce a visible "
+                    "error state with a retry, and no blank screen"),
+        falsifying_input=("delete `paper.json` from the staged bundle and require "
+                          "the check to go red"),
+        source="external reviews 2026-10-02",
+    ),
+    Task(
+        id="TASK-070", type="task", epic="UI-AUTOMATION", priority="P1",
+        status="TODO", owner="ui-inspector",
+        evidence="MEASURED 2026-10-02: 0 of 4 (deep link, Back, Forward, Refresh) "
+                  "are exercised by the probe",
+        title="deep link, Back, Forward and Refresh are covered by NOTHING today",
+        why=("Zero coverage on the four behaviours most likely to lose a learner's "
+             "work. They are also the ones most exposed by the recent navigation "
+             "work -- `ORDER` becoming data, and the output nesting to "
+             "`out/<exam>/<section>/<lesson_id>/` -- so the change most likely to "
+             "have broken them is the change that tested them least."),
+        acceptance=("a deep link into a lesson loads with no prior state; Back and "
+                    "Forward preserve the rung; Refresh follows the DECLARED "
+                    "persistence policy (see TASK-071)"),
+        falsifying_input=("navigate to a lesson by direct URL in a fresh browser "
+                          "and require the probe to fail today"),
+        source="external reviews 2026-10-02",
+    ),
+    Task(
+        id="TASK-071", type="task", epic="UI-AUTOMATION", priority="P2",
+        status="TODO", owner="mentor",
+        evidence="MEASURED 2026-10-02: `Cache-Control: no-store`, answers in "
+                  "memory, no `localStorage` anywhere in the bundle",
+        title="DECLARE the persistence contract before automating it",
+        why=("Both reviews specify persistence behaviour in detail -- versioned "
+             "`localStorage`, migrations, stale-schema reset. We have none, by "
+             "decision. The temptation this record exists to refuse is BUILDING a "
+             "versioned store so those tests have something to test: that is "
+             "inventing a feature nobody asked for in order to satisfy a spec. The "
+             "honest move is to write the decision down and assert IT: refresh "
+             "resets, deliberately, with no data loss warning because no data is "
+             "kept."),
+        acceptance=("the policy is written in the LLD and asserted; if persistence "
+                    "is ever added, this record is REOPENED rather than quietly "
+                    "implemented"),
+        falsifying_input=("reload mid-lesson and assert the declared behaviour, "
+                          "whichever way the decision goes"),
+        source="external reviews 2026-10-02; rejected item R3 in ADOPT_REJECT.md",
+    ),
+    Task(
+        id="TASK-072", type="task", epic="UI-AUTOMATION", priority="P1",
+        status="TODO", owner="paper-auditor",
+        evidence="adopted as roadmap in ADOPT_REJECT.md R4; none of it is built",
+        title="mock UI scenarios (palette, timer, fake clock, submit confirm)",
+        why=("Roughly 70% of both reviews' line items describe a product that does "
+             "not exist: 28-question section mocks, 75-question full mocks, answer "
+             "palettes, timers, a Part 1 -> GK transition. Rejected as a CURRENT "
+             "gate for one reason only -- a gate that is permanently red teaches "
+             "its reader to ignore it. It belongs to the phase that builds it."),
+        acceptance=("when the mock phase starts, each of these is a scenario and "
+                    "not a claim; the fake clock is injected in test builds ONLY, "
+                    "never shipped"),
+        falsifying_input=("n/a -- not built yet; recorded so the review is not "
+                          "silently dropped"),
+        source="external reviews 2026-10-02",
+    ),
+    Task(
+        id="TASK-073", type="task", epic="UI-AUTOMATION", priority="P2",
+        status="TODO", owner="ui-inspector",
+        evidence="MEASURED 2026-10-02: 9 buttons in the JS templates, 4 with no id",
+        title="every control needs a stable accessible name; a real radio group?",
+        why=("Part adopted, part rejected (ADOPT_REJECT.md R6). The accessible-NAME "
+             "discipline is right and cheap: a control with no stable name cannot "
+             "be located by role, by a learner using a screen reader, or by a test. "
+             "But `role=radio` is a PRODUCT change, not a test change, and it fights "
+             "the commit barrier -- the options must be inert until the learner "
+             "commits. Recorded so it is a decision rather than an omission."),
+        acceptance=("a check asserts every button has a stable accessible name; the "
+                    "radio-group question is answered explicitly, not by drift"),
+        falsifying_input=("remove an accessible name and require the check to go "
+                          "red"),
+        source="external reviews 2026-10-02",
+    ),
+    Task(
         id="TASK-062", type="task", epic="LESSON-LOOP", priority="P0",
         status="TESTING", owner="mentor",
         evidence=("MEASURED 2026-10-02: 8 templates, 59 single-digit instances, "
