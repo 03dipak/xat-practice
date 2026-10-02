@@ -56,8 +56,8 @@ def test_build_writes_to_the_project_root():
     assert Path(B.__file__).resolve().parent.name == "xat_practice"
 
 
-def test_every_nine_roles_exist():
-    assert len(AGENTS) == 9
+def test_every_ten_roles_exist():
+    assert len(AGENTS) == 10
     assert set(AGENTS) == set(B.AGENTS)
 
 
@@ -262,3 +262,76 @@ def test_main_fails_loudly_if_a_handoff_is_dropped():
     finally:
         B.PROMPTS["tester"] = original
     B.main()
+
+
+# ---------------------------------------------------------------------------
+# the UI inspector exists because of a measurement
+# ---------------------------------------------------------------------------
+
+def test_ui_inspector_exists_and_owns_the_rendered_page():
+    """The role is not tidiness. `lesson.js` did not parse for the whole of
+    Wave 1, so the browser ran none of it and the page had never worked, and 161
+    tests passed because every one asserted on the file's TEXT. Without a role
+    that renders the artefact, the next session reads the source again."""
+    assert "ui-inspector" in AGENTS
+    d = AGENTS["ui-inspector"]["description"]
+    assert "did not parse" in d
+    assert "headless" in d
+    assert "asserted on file TEXT" in d or "TEXT" in d
+
+
+def test_ui_inspector_is_asked_to_render_not_to_read():
+    p = AGENTS["ui-inspector"]["prompt"]
+    assert "RENDER IT" in p
+    assert "LOOK AT THE PIXELS" in p, (
+        "the prompt must require looking at the render. photos_graphics' "
+        "render-inspector exists for exactly this: 'LOOK at the pixels, then "
+        "measure them. Do not infer from the code.'"
+    )
+    assert "tools/ui_probe.py" in p, "the role must be given the command that renders"
+    assert "UNVERIFIED" in p, (
+        "the role must say what to do when it cannot execute, or it will "
+        "report static reads as findings"
+    )
+    assert "is not a property of its text" in p
+
+
+def test_ui_inspector_carries_the_defects_it_must_not_reintroduce():
+    """A role prompt that does not name the past defects will let them back."""
+    p = AGENTS["ui-inspector"]["prompt"]
+    for fact, why in (
+        ("item's", "the exact syntax error that shipped"),
+        ("Hidden is not absent", "the options were in the DOM inside a hidden div"),
+        ("window", "the globals that let a probe replace lesson.js's check()"),
+        ("recomputed key", "the verdict must agree with the solver"),
+    ):
+        assert fact in p, f"the prompt lost {fact!r} ({why})"
+
+
+def test_ui_inspector_does_not_steal_another_role_s_job():
+    """Three boundaries, each of which has been confused before."""
+    p = AGENTS["ui-inspector"]["prompt"].lower()
+    assert "is the viewer's job" in p, "whether it TEACHES belongs to the viewer"
+    assert "is key-auditor's job" in p, "whether the key is right belongs to key-auditor"
+    assert "is tester's job" in p, "whether a gate is right belongs to tester"
+    assert "mentor owns the ruling" in p
+
+
+def test_the_ui_inspector_has_the_commands_it_needs_and_none_it_does_not():
+    """It must be able to build the bundle, serve it and drive a browser, or the
+    role cannot do its job. It must still not be able to edit what it audits."""
+    bash = AGENTS["ui-inspector"]["permission"]["bash"]
+    assert AGENTS["ui-inspector"]["permission"]["edit"] == "deny"
+    assert bash["*"] == "ask"
+    assert bash[".venv/bin/python *"] == "allow"
+    assert bash["uv run *"] == "deny", "a reviewer that can run uv run can rewrite the venv"
+
+
+def test_the_rendered_page_is_checked_by_a_test_and_not_only_by_a_tool():
+    """`tools/ui_probe.py` that nothing invokes is a script, not a gate."""
+    text = (Path(B.__file__).resolve().parent.parent.parent
+            / "tests" / "test_render.py").read_text()
+    assert "tools/ui_probe.py" in text or "ui_probe" in text
+    assert Path(B.ROOT) / "tools" / "ui_probe.html" in [
+        p for p in (Path(B.ROOT) / "tools").iterdir() if p.is_file()
+    ], "the probe page must be committed, not a scratch file"

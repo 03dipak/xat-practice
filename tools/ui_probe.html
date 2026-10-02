@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>XAT Practise &middot; UI probe</title>
+</head>
+<body>
+<!--
+  THE UI PROBE. The page a human sits, driven by a script instead.
+
+  WHY THIS FILE EXISTS, and the reason is the worst defect this project has
+  produced. `lesson.js` did not parse for the whole of Wave 1 -- an apostrophe in
+  prose, `item's`, closed a JavaScript string literal -- so the browser ran none
+  of the file and showed only the static HTML. The lesson page had never worked,
+  not once. 161 tests passed throughout, because every one of them asserted on
+  the file's TEXT.
+
+  A static bundle's correctness is not a property of its text. It is a property
+  of what a browser does when it loads it. So this file loads the real
+  `lesson.js`, against the real `index.html` shell, and asserts on the DOM the
+  browser actually built.
+
+  The method is lifted from photos_graphics `tools/c2_shaping_probe.html` and
+  `tools/run_probe_headless.js`, where the same class of defect had already
+  produced a green suite: "all the earlier tests were static string assertions,
+  and a script that threw ReferenceError before measuring once had a green
+  suite. This executes the real script."
+
+  The probe writes one line, `PROBE_RESULT::<json>`, into #probe-out.
+  `tools/ui_probe.py` runs it in a real headless Chromium, reads that line back
+  and exits non-zero on any failure. Nothing here is a claim about the source.
+-->
+<main>
+  <h1>Lesson 1 &middot; Simple Interest</h1>
+  <div class="sub">One subtopic, four levels &mdash; foundation, easy, medium,
+    hard. Nothing here is scored; everything here is meant to be understood.</div>
+  <div class="rungs" id="rungs"></div>
+  <div id="stage"></div>
+</main>
+<div class="foot" id="foot"></div>
+<h1 id="probe-out">PENDING</h1>
+
+<!-- EXPECTED is injected by tools/ui_probe.py before this script runs. It carries
+     the recomputed key for each item, so the browser's own verdict can be
+     compared against the solver's. A UI that disagrees with the key is the one
+     failure this product cannot have. -->
+<script src="lesson.js"></script>
+<script>
+"use strict";
+
+const checks = [];
+const jsErrors = [];
+const diag = {};
+let clickSeen = 0;
+let clickTarget = '';
+document.addEventListener('click', (e) => { clickSeen++; clickTarget = (e.target && e.target.tagName) + '#' + (e.target && e.target.id); }, true);
+// MEASURED: the first version of this probe waited 8 seconds for a result that
+// never came and reported "check-produces-a-verdict: FAIL" with an empty
+// detail. The real cause was a rejected promise inside lesson.js. An
+// unhandled rejection is invisible unless somebody listens for it, so a page
+// can throw and the probe can only say "it didn't work".
+window.addEventListener('error', (e) => {
+  jsErrors.push('error: ' + (e.message || 'unknown') + ' @' + (e.lineno || '?'));
+});
+window.addEventListener('unhandledrejection', (e) => {
+  jsErrors.push('unhandled rejection: ' + ((e.reason && e.reason.stack) || e.reason));
+});
+function record(name, pass, detail) {
+  checks.push({ name, pass: !!pass, detail: String(detail === undefined ? '' : detail) });
+}
+const q = (s) => document.querySelector(s);
+const qa = (s) => Array.from(document.querySelectorAll(s));
+const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+
+async function waitFor(fn, ms) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    try { if (fn()) return true; } catch (e) { /* not ready yet */ }
+    await new Promise((r) => setTimeout(r, 40));
+  }
+  return false;
+}
+
+function resources() {
+  return performance.getEntriesByType('resource').map((r) => r.name);
+}
+function fetched(needle) {
+  return resources().filter((n) => n.indexOf(needle) !== -1).length;
+}
+
+function report(done) {
+  document.getElementById('probe-out').textContent =
+    'PROBE_RESULT::' + JSON.stringify({ done, checks, jsErrors, diag });
+}
+
+(async () => {
+  try {
+    // ---- 1. the page runs at all -------------------------------------------------
+    // Every element below is written by lesson.js and by nothing else. An empty
+    // stage means the file did not parse or threw before rendering, and this is
+    // the assertion that would have caught the shipped defect on day one.
+    const alive = await waitFor(() => q('.stem') && !q('.stem').classList.contains('pending'), 8000);
+    record('page-renders', alive, alive ? norm(q('.stem').textContent).slice(0, 70) : 'stage stayed empty');
+    if (!alive) return report('dead');
+
+    record('rung-bar-built', qa('.rung').length === 4, qa('.rung').length + ' rungs');
+
+    // Nothing lesson.js defines may be reachable as a global.
+    //
+    // MEASURED: `check` was a GLOBAL function, and this probe's own
+    // `check(name, pass, detail)` silently replaced it. The click handler then
+    // called the wrong function, answerkey.json was never fetched, and the page
+    // produced no verdict -- which surfaced as ONE vague failing check and cost
+    // a long diagnosis. `ORDER`, `state`, `render`, `esc`, `fail`, `check` and
+    // `next` were all on `window`, where any future script can overwrite any of
+    // them. The script is now wrapped in an IIFE.
+    const leaked = ['ORDER', 'LABEL', 'state', 'rungBar', 'esc', 'loadPaper',
+                    'loadKey', 'fail', 'render', 'check', 'next', 'finish']
+      .filter((n) => typeof window[n] !== 'undefined');
+    record('lesson-js-leaks-no-globals', leaked.length === 0,
+      leaked.length ? 'leaked: ' + leaked.join(', ') : 'all 12 names private');
+    record('footer-states-the-guarantees',
+      /recomputed/.test(norm(q('#foot').textContent)) &&
+      /derived from each item/.test(norm(q('#foot').textContent)),
+      norm(q('#foot').textContent).slice(0, 60));
+    record('question-1-is-the-foundation-rung', /FOUNDATION/.test(q('.qno').textContent), norm(q('.qno').textContent));
+
+    // ---- 2. the commit barrier ---------------------------------------------------
+    // The property is NOT "the box is absent" -- the empty box is fine. It is
+    // that no OPTION exists in the DOM yet, so there is nothing to inspect.
+    record('no-option-exists-in-the-dom-before-the-reveal', qa('.opt').length === 0,
+      qa('.opt').length + ' .opt elements present');
+    record('reveal-is-born-disabled', q('#reveal').disabled === true,
+      'disabled=' + q('#reveal').disabled);
+    record('check-button-absent-before-the-reveal', q('#check') === null, 'no check button yet');
+
+    // clicking through without a confidence must accomplish nothing
+    q('#reveal').click();
+    record('clicking-a-disabled-reveal-does-nothing', qa('.opt').length === 0,
+      qa('.opt').length + ' .opt elements leaked by a disabled button');
+
+    // ---- 3. the commit ------------------------------------------------------------
+    q('[data-conf="sure"]').click();
+    record('confidence-enables-the-reveal', q('#reveal').disabled === false,
+      'disabled=' + q('#reveal').disabled);
+    // The commit's value is that it produces no observable effect anywhere.
+    // Measured as network activity, which is the only way it could leave the
+    // machine; the storage half is asserted against the served file in
+    // tests/test_bundle.py, because this page contains the words itself.
+    const resourcesAtCommit = resources().length;
+    record('the-commit-sends-nothing',
+      resources().length === resourcesAtCommit,
+      resources().length - resourcesAtCommit + ' requests during the commit');
+
+    q('#reveal').click();
+    const revealed = q('#optBox') !== null && !q('#optBox').classList.contains('hidden');
+    record('reveal-shows-the-options', revealed, 'optBox hidden=' + (q('#optBox') ? q('#optBox').classList.contains('hidden') : 'absent'));
+    record('commit-box-is-replaced-not-stacked', q('#commitBox') === null || q('#commitBox').classList.contains('hidden'), 'commitBox hidden');
+
+    // ---- 4. the options -----------------------------------------------------------
+    const opts = qa('.opt');
+    record('exactly-five-options', opts.length === 5, opts.length + ' options');
+    record('options-are-labelled-a-to-e',
+      opts.map((o) => norm(o.querySelector('.k').textContent)).join('') === 'ABCDE',
+      opts.map((o) => norm(o.querySelector('.k').textContent)).join(''));
+    record('the-key-is-not-visible-before-checking',
+      qa('.opt.right').length === 0 && qa('.opt.wrong').length === 0,
+      qa('.opt.right').length + ' marked before check');
+
+    // record() must refuse to run with nothing selected
+    q('#check').click();
+    await new Promise((r) => setTimeout(r, 200));
+    record('check-with-no-selection-does-nothing', q('#result').classList.contains('hidden'), 'no result shown');
+
+    // ---- 5. THE KEY, fetched only now --------------------------------------------
+    const keyFetchesBefore = fetched('answerkey.json');
+    record('answerkey-not-fetched-before-check', keyFetchesBefore === 0,
+      keyFetchesBefore + ' fetches before check');
+
+    // deliberately pick a WRONG option so the full teaching path runs
+    const expect = (window.EXPECTED || {})['L1-F'];
+    const wantWrong = expect === undefined ? 1 : (expect + 1) % 5;
+    opts[wantWrong].click();
+    record('exactly-one-option-is-selected', qa('.opt.sel').length === 1, qa('.opt.sel').length + ' selected');
+
+    const btn = q('#check');
+    diag.checkButton = btn ? btn.tagName + '#' + btn.id : 'NULL';
+    diag.selCount = qa('.opt.sel').length;
+    if (btn) btn.click();
+    const gotResult = await waitFor(() => !q('#result').classList.contains('hidden'), 8000);
+    diag.clickSeen = clickSeen;
+    diag.clickTarget = clickTarget;
+    record('check-produces-a-verdict', gotResult, norm(q('.verdict') && q('.verdict').textContent));
+
+    const expectedVerdict = expect === wantWrong ? 'Correct.' : 'Not correct.';
+    record('the-browser-verdict-matches-the-recomputed-key',
+      norm(q('.verdict').textContent).indexOf(expectedVerdict) === 0,
+      'browser said "' + norm(q('.verdict').textContent) + '", key is index ' + expect);
+
+    record('answerkey-is-fetched-inside-check',
+      fetched('answerkey.json') > keyFetchesBefore,
+      fetched('answerkey.json') + ' fetches after check');
+
+    const letter = 'ABCDE'[expect];
+    record('the-verdict-names-the-answer-letter',
+      norm(q('.verdict').textContent).indexOf(letter) === -1
+        ? false
+        : norm(q('.verdict').textContent).indexOf('answer is ' + letter) !== -1,
+      norm(q('.verdict').textContent));
+
+    record('the-correct-option-is-marked', qa('.opt.right').length === 1, qa('.opt.right').length + ' marked right');
+    record('the-wrong-pick-is-marked-wrong', qa('.opt.wrong').length === 1, qa('.opt.wrong').length + ' marked wrong');
+
+    // ---- 6. the teaching ----------------------------------------------------------
+    const sols = qa('#result .sol li');
+    record('the-solution-has-steps', sols.length >= 3, sols.length + ' steps');
+    record('the-solution-ends-on-the-stated-answer',
+      sols.length > 0 && norm(sols[sols.length - 1].textContent).indexOf('ANSWER: ') === 0,
+      sols.length ? norm(sols[sols.length - 1].textContent) : 'no steps');
+
+    const solBlob = sols.map((s) => norm(s.textContent)).join(' ');
+    const everyOptionRuledOut = qa('.opt').every((o) => {
+      const t = norm(o.lastElementChild.textContent);
+      return solBlob.indexOf(t) !== -1;
+    });
+    record('every-option-is-ruled-out-by-name', everyOptionRuledOut,
+      'the owner asked for the misconception behind every option not picked');
+
+    const cell = norm(q('#result .qcell div:last-child').textContent);
+    record('the-quadrant-cell-is-reported', cell.length > 10, cell.slice(0, 60));
+    record('the-quadrant-cell-matches-sure-and-wrong',
+      cell.indexOf('Sure and WRONG') === 0, cell.slice(0, 40));
+
+    // ---- 7. moving on -------------------------------------------------------------
+    const paperBefore = fetched('paper.json');
+    q('#next').click();
+    const advanced = await waitFor(() => q('.qno') && /question 2/.test(q('.qno').textContent), 8000);
+    record('next-advances-to-question-2', advanced, norm(q('.qno') && q('.qno').textContent));
+    record('advancing-does-not-refetch-the-paper', fetched('paper.json') === paperBefore,
+      paperBefore + ' -> ' + fetched('paper.json') + ' paper.json fetches');
+    record('question-2-is-the-easy-rung', /EASY/.test(q('.qno').textContent), norm(q('.qno').textContent));
+
+    report('done');
+  } catch (err) {
+    record('the-probe-itself-ran-to-completion', false, (err && err.stack) || String(err));
+    report('threw');
+  }
+  if (jsErrors.length) {
+    record('the-page-raised-no-javascript-error', false, jsErrors.join(' ;; '));
+  } else {
+    record('the-page-raised-no-javascript-error', true, 'no error or unhandled rejection');
+  }
+  report('done');
+})();
+</script>
+</body>
+</html>

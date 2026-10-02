@@ -149,12 +149,22 @@ JS = r"""
 // learner has committed AND selected, so a learner cannot read the answer out
 // of the page source. `test_the_bundle_does_not_leak_the_key_before_check`
 // asserts that against the files on disk.
+// EVERYTHING IS INSIDE AN IIFE. MEASURED 2026-10-02: `check` was a GLOBAL
+// function, so anything else in the page could replace it. A UI probe that
+// declared its own `check(name, pass, detail)` silently took lesson.js's place:
+// the click handler called the wrong function, `answerkey.json` was never
+// fetched, and the page produced no verdict at all. `ORDER`, `state`, `render`,
+// `esc`, `fail`, `check` and `next` were all on `window` where a future script
+// could overwrite any of them. Nothing in here is part of the page's contract,
+// so none of it belongs in the global scope.
+(() => {
+
 const ORDER = ['L1-F', 'L1-E', 'L1-M', 'L1-H'];
 const LABEL = {
   'L1-F': 'FOUNDATION', 'L1-E': 'EASY',
   'L1-M': 'MEDIUM',   'L1-H': 'HARD',
 };
-const state = { i: 0, commit: null, pick: null, log: [] };
+const state = { i: 0, commit: null, pick: null, meta: null, log: [] };
 let paperCache = null;
 
 // paper.json holds ONLY what the learner is allowed to see: the stem, the
@@ -242,7 +252,7 @@ async function render() {
     fail(stage, id, err);
     return;
   }
-  const a = 'ABCDE';
+  state.meta = meta;
 
   stage.innerHTML = `
     <div class="card">
@@ -263,15 +273,7 @@ async function render() {
         <div class="note" id="commitNote"></div>
       </div>
 
-      <div id="optBox" class="hidden">
-        <div class="opts">
-          ${meta.options.map((o, n) => `
-            <button class="opt" data-pick="${n}">
-              <span class="k">${a[n]}</span><span>${esc(o)}</span>
-            </button>`).join('')}
-        </div>
-        <button id="check">Check my answer</button>
-      </div>
+      <div id="optBox" class="hidden"></div>
 
       <div id="result" class="hidden"></div>
     </div>`;
@@ -288,8 +290,26 @@ async function render() {
   });
 
   document.getElementById('reveal').onclick = () => {
+    // THE OPTIONS ARE BUILT HERE, not in render(). MEASURED 2026-10-02: the
+    // first version rendered them into a hidden <div id="optBox">, so they were
+    // in the DOM before the learner committed -- hidden, but present, and one
+    // line of devtools away. The module docstring claimed "the options are not
+    // in the DOM" and that claim was FALSE, which is worse than either a
+    // working barrier or an honest gap.
+    //
+    // paper.json is cached in memory, so building them here costs no fetch.
+    const box = document.getElementById('optBox');
+    const a = 'ABCDE';
+    box.innerHTML = `
+      <div class="opts">
+        ${state.meta.options.map((o, n) => `
+          <button class="opt" data-pick="${n}">
+            <span class="k">${a[n]}</span><span>${esc(o)}</span>
+          </button>`).join('')}
+      </div>
+      <button id="check">Check my answer</button>`;
     document.getElementById('commitBox').classList.add('hidden');
-    document.getElementById('optBox').classList.remove('hidden');
+    box.classList.remove('hidden');
   };
 }
 
@@ -389,6 +409,8 @@ document.getElementById('foot').innerHTML =
   'are a measured property of these four questions.';
 
 render();
+
+})();
 """
 
 

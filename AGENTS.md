@@ -104,6 +104,7 @@ product with a length setting.
 
 | role | evidence | use for |
 |---|---|---|
+| `ui-inspector` | the **rendered DOM** from `tools/ui_probe.py`, plus the pixels | what a browser actually does: does the script run at all, is the commit barrier real AS RENDERED, does the verdict agree with the solver |
 | `viewer` | a rendered paper, **sat as a student would sit it** | answerable from the screen, readability, whether the step-by-step actually teaches |
 | `question-setter` | paper vs [`PEDAGOGY.md`](docs/PEDAGOGY.md) | whether it is a *paper*: level spread, distractor diagnosability, key balance |
 | `key-auditor` | derivation vs stem/options/key | **whether the key is right.** Expected to disagree |
@@ -206,6 +207,15 @@ teach.
 - **Measure before believing "slow".** The owner's page was reported slow; every
   asset was 1.4–4.8ms and the whole page was ~12ms. It was not slow, it was
   absent, and one thing was lying. `docs/DECISIONS.md` §6 has all four defects.
+- **`ui_probe.py` exits 2 when it has no browser, and that is deliberate.** Two
+  checks in this project's history reported success while proving nothing: the
+  coverage floor reading eight files out of nine, and
+  `test_the_reveal_button_starts_disabled` asserting an *enabling* line. A check
+  that cannot execute must not be able to return success.
+- **`lesson.js` is wrapped in an IIFE. Keep it that way.** `check`, `state`,
+  `ORDER` and `render` were global, and a probe's own `check()` silently replaced
+  `lesson.js`'s — the page stopped working with no error. `ui_probe.py` is the
+  reason this is now pinned.
 - **`uv sync` PRUNES.** It removes anything in `.venv` that is not declared in
   `pyproject.toml`. Before `[dependency-groups] dev` existed it deleted mypy,
   pytest, pytest-cov and ruff — the four tools the gates are run with. Declare

@@ -27,7 +27,7 @@ Waves 0 and 1 landed. **1 of 40 subtopics is written** (Simple Interest, four
 rungs, all four admitted, all keys recomputed). Measured on 2026-10-02:
 
 ```
-.venv/bin/python -m pytest -q --strict-markers --cov      -> 198 passed
+.venv/bin/python -m pytest -q --strict-markers --cov      -> 212 passed
 .venv/bin/python -m coverage report --include="src/xat_practice/*.py" \
     --fail-under=95 --precision=2                        -> TOTAL 96.64%
 .venv/bin/ruff check src tests                           -> All checks passed
@@ -55,9 +55,9 @@ long enough to earn one.
 **The page has now been rendered, not just read.** Until 2026-10-02 the lesson had
 never executed in a browser: `lesson.js` contained a syntax error, so the browser
 ran none of it and showed only the static HTML, and 161 tests passed throughout
-because every one of them asserted on the file's *text*. It is fixed, and
-`node --check` on the built file is now part of the suite. See `docs/DECISIONS.md`
-§6.0 — this is the most important entry in that section.
+because every one of them asserted on the file's *text*. It is fixed, and both
+`node --check` and a real headless-browser render are now part of the suite. See
+`docs/DECISIONS.md` §6.0 — the most important entry in that section.
 
 ## Install on WSL
 
@@ -201,6 +201,35 @@ Geometry lesson yet.
 
 `gates` and `levels` currently report on Lesson 1 only.
 
+### Check the UI in a real browser
+
+```bash
+.venv/bin/xat-practice build
+.venv/bin/python tools/ui_probe.py                 # one line per check, exit 1 on failure
+.venv/bin/python tools/ui_probe.py --shot /tmp/ui.png
+```
+
+This serves the built bundle through the real threaded server, drives it in a
+headless Chromium, and asserts on the DOM the browser actually built — 34 checks,
+including:
+
+| check | what it holds |
+|---|---|
+| `page-renders` | the stage is not empty, i.e. the script executed at all |
+| `no-option-exists-in-the-dom-before-the-reveal` | the commit barrier, as **rendered** — hidden is not absent |
+| `reveal-is-born-disabled` | the button's born state, not a line that enables it |
+| `answerkey-not-fetched-before-check` | the key is unreachable before the learner commits |
+| `the-browser-verdict-matches-the-recomputed-key` | the screen agrees with the key `Solver.verify` computed |
+| `the-solution-ends-on-the-stated-answer` | the step-by-step ends on the key |
+| `lesson-js-leaks-no-globals` | twelve internals stay off `window` |
+
+Exit **2** means no browser was found and therefore nothing was proven — never
+0. A check that cannot run must not be reported as a pass. The same discipline as
+the coverage floor that read eight files out of nine.
+
+It is also part of the suite (`tests/test_render.py`), and the `ui-inspector`
+agent owns it.
+
 ### The four gate commands
 
 All four, not three:
@@ -238,7 +267,11 @@ src/xat_practice/
   lesson1.py         Lesson 1: Simple Interest, 4 rungs
   bundle.py          static bundle + paper/key file split
   cli.py             8 verbs
-tests/               198 tests, 6 modules
+tests/               212 tests, 7 modules
+tools/
+  ui_probe.html       the probe page a browser actually runs
+  ui_probe.py         serves the bundle, drives Chromium, reports
+
 ```
 
 ## The exam this trains for

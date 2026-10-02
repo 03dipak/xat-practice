@@ -607,3 +607,76 @@ previously measured number is still valid is how it stops being one.
   20KB. It is a guard, not a defect detector — it passes on both the broken and
   the fixed version, and it is named as such rather than being allowed to look
   like evidence.
+
+### 6.6 The UI probe, and the three defects only a browser could find
+
+Written after §6.0, because §6.0's method needed a home. The pattern is lifted
+from the sibling project `photos_graphics`, which had already paid for this
+lesson: *"all the earlier tests were static string assertions, and a script that
+threw ReferenceError before measuring once had a green suite. This executes the
+real script."*
+
+`tools/ui_probe.html` is the page, `tools/ui_probe.py` serves the built bundle
+through the **real** threaded server and drives it in a headless Chromium, and
+`tests/test_render.py` gates on the result. **34 checks.** Exit 2 when no browser
+exists, because a check that cannot run is not a pass.
+
+Three further defects surfaced, and none was reachable by reading the source:
+
+**The options were in the DOM before the commit.** `render()` injected them into
+`<div id="optBox" class="hidden">`. Hidden is not absent: the module docstring's
+first numbered step claimed *"STEM ALONE. The options are not in the DOM."* That
+claim was **false**, and a false claim in a docstring is worse than either a
+working barrier or an honest gap — it reads as a guarantee to every later session.
+`test_options_are_not_in_the_dom_before_the_reveal` had passed throughout because
+it asserted on `index.html`, which never had them in it, while `lesson.js`
+supplied them at runtime. The option box is now built **empty** and populated
+inside the reveal handler, so `qa('.opt').length === 0` before the commit.
+
+**A global `function check()`.** `lesson.js` declared `check`, `state`, `ORDER`,
+`render`, `esc`, `fail` and `next` at global scope. The probe then declared its
+own `check(name, pass, detail)` — same scope — and **silently replaced
+`lesson.js`'s**. The click handler called the wrong function, `answerkey.json`
+was never fetched, and the page produced no verdict at all. It surfaced as one
+vague failing check and cost a long diagnosis; the giveaway was a single
+unnamed probe result, `{"pass": false, "detail": ""}`, which is `lesson.js`'s
+`check()` invoked with the wrong arity. The whole script is now inside an IIFE
+and `lesson-js-leaks-no-globals` pins all twelve names as private.
+
+**A test that asserts source order as a proxy for flow order.**
+`test_the_flow_is_commit_then_options_then_check_then_solution` asserted that
+`reveal`, `optBox`, `check`, `result` appeared in that order *in the file*. The
+moment the implementation became correct, the check button moved into the reveal
+handler and the proxy broke. **A proxy that fails when the thing it proxies gets
+right is worse than no proxy.** The test now asserts the real structure, and the
+rendered order of the steps is asserted against a browser.
+
+And the probe hardened itself after each of these:
+
+| defect in the probe | what it cost |
+|---|---|
+| an unnamed result crashed the runner with `KeyError` | looked identical to "a check failed" |
+| a rejection inside `lesson.js` was invisible | the probe could only say "it did not work" — now `window.onerror` + `unhandledrejection` are captured and reported |
+| `the-commit-is-not-graded-or-sent` grepped the page for `localStorage` | matched **its own source**; now asserted as network activity |
+| `required.relative_to(ROOT)` in a diagnostic | `ValueError` when the bundle is outside the project — a diagnostic that crashes is not a diagnostic |
+
+**Every UI check was confirmed to FAIL against the reintroduced defect** before
+being accepted. The syntax error gives `0/1, state: dead`; putting the options
+back in the DOM gives `no-option-exists-in-the-dom-before-the-reveal: FAIL —
+5 .opt elements present` and `clicking-a-disabled-reveal-does-nothing: FAIL —
+5 .opt elements leaked by a disabled button`.
+
+### 6.7 `ui-inspector` — the role, so the method has an owner
+
+Ten agents, not nine. A tool that nothing is required to run is a script, not a
+gate, and a method that belongs to no role is a habit that expires.
+
+`ui-inspector` owns what a browser does with the built lesson, and its prompt
+names the four defects above so they cannot be reintroduced quietly. Its
+boundaries are the three that get confused: whether the step-by-step **teaches**
+is `viewer`, whether the **key** is right is `key-auditor`, whether a **gate** is
+implemented correctly is `tester`. It renders, and hands off.
+
+`test_ui_inspector_carries_the_defects_it_must_not_reintroduce` fails if
+`item's`, "Hidden is not absent", `window` or "recomputed key" are dropped from
+the prompt.

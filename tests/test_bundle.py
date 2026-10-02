@@ -201,12 +201,44 @@ def test_check_is_gated_on_an_actual_selection(on_disk):
 # ---------------------------------------------------------------------------
 
 def test_the_flow_is_commit_then_options_then_check_then_solution(on_disk):
+    """The order of the LOOP: commit, options, check, solution.
+
+    This used to assert the order of those identifiers *in the source file*, as a
+    proxy for the order of the steps. That proxy broke the moment the
+    implementation became correct: the check button is now built inside the
+    reveal handler, because the options are built there too, so `id="check"`
+    appears later in the file than `id="result"` even though check still happens
+    before the result is shown.
+
+    A proxy that breaks when the thing it proxies gets right is worse than no
+    proxy. What is asserted here is the real structure: the commit box and the
+    reveal are built in `render()` and the option box is empty, and the check
+    button is constructed inside the reveal handler. The rendered order of the
+    steps is asserted against a real browser in `tools/ui_probe.html`.
+    """
     js = on_disk["lesson.js"]
     for step in ("commitBox", "reveal", "optBox", "check", "result"):
         assert step in js, step
-    order = [js.index(s) for s in ("id=\"reveal\"", "id=\"optBox\"",
-                                   "id=\"check\"", "id=\"result\"")]
-    assert order == sorted(order), "the loop is out of order"
+
+    render = js[js.index("async function render()"):js.index("async function check()")]
+    template = render[render.index("stage.innerHTML = `"):]
+    assert template.index('id="commitBox"') < template.index('id="reveal"'), (
+        "the commit must be on screen before the reveal"
+    )
+    assert template.index('id="reveal"') < template.index('id="optBox"'), (
+        "the reveal must exist before the option box it reveals"
+    )
+    assert '<div id="optBox" class="hidden"></div>' in js, (
+        "the option box is built EMPTY and filled at reveal time, so the options "
+        "are not in the DOM until the learner has committed"
+    )
+    reveal = js[js.index("reveal').onclick"):js.index("async function check()")]
+    assert 'id="check"' in reveal, (
+        "the check button is constructed inside the reveal handler"
+    )
+    assert reveal.index("data-pick") < reveal.index('id="check"'), (
+        "the options must be built before the button that grades them"
+    )
 
 
 def test_every_wrong_option_is_shown_its_misconception(files):
