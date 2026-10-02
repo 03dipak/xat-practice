@@ -27,7 +27,7 @@ Waves 0 and 1 landed. **1 of 40 subtopics is written** (Simple Interest, four
 rungs, all four admitted, all keys recomputed). Measured on 2026-10-02:
 
 ```
-.venv/bin/python -m pytest -q --strict-markers --cov      -> 247 passed, 1 xfailed
+.venv/bin/python -m pytest -q --strict-markers --cov      -> 248 passed
 .venv/bin/python -m coverage report --include="src/xat_practice/*.py" \
     --fail-under=95 --precision=2                        -> TOTAL 96.64%
 .venv/bin/ruff check src tests                           -> All checks passed
@@ -275,7 +275,7 @@ src/xat_practice/
   bundle.py          static bundle + paper/key file split
   cli.py             8 verbs
   registry.py       every lesson that EXISTS, in one place
-tests/               247 tests, 8 modules
+tests/               248 tests, 8 modules
 tools/
   ui_probe.html       the probe page a browser actually runs
   ui_probe.py         serves the bundle, drives Chromium, reports

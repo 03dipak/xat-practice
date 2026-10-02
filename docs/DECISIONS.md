@@ -1193,3 +1193,68 @@ nothing read.
 
 Recorded because it is the same shape as the coverage floor that read eight files
 out of nine: **a test can be green, be well-named, and be examining nothing.**
+
+---
+
+## 12. D21 — the trap pool, and the item whose lesson was false for its own data
+
+### 12.1 A number I passed on without checking the code
+
+MEASURED 2026-10-02. `question-setter` reported *"20 × 4 = 80 misconception names
+needed, 6 available, shortfall 74"* and I passed it on as a blocker. Then I read
+the gate:
+
+```python
+if len({d.misconception for d in it.distractors}) != len(it.distractors):   # G12
+```
+
+**`G12` requires the four misconceptions *within one item* to be distinct. No gate
+requires variety *across* items.** So 20 items need 80 *usages*, not 80 different
+names, and the shortfall of 74 was never a constraint. It was a design target I
+had promoted to a blocker without checking.
+
+The same shape as the coverage floor that read eight files out of nine, and the
+same shape as the `written: 4` count in §11.1: **a number repeated until it looks
+measured.** Recorded here because the fix is not "be careful", it is "read the
+predicate".
+
+### 12.2 The pool: `pl_int` 6 → 20 traps
+
+Measured after: `simple-interest` **2 → 8**, `compound-interest-with-installments`
+**2 → 6**, `false-weight-dishonest-dealer` **2 → 6**. Total named traps across
+the syllabus **90 → 104**.
+
+Each entry is a mistake a learner makes, not a topic heading, because D9 says a
+trap becomes a named distractor and a heading cannot be ruled out on a page. Each
+names the wrong MOVE, so `G16` can check that the option really is what the move
+produces. `self_check()` asserts nothing about trap counts, so this is a pure data
+addition — verified, not assumed.
+
+### 12.3 L1-M rebuilt, and the defect that could not be gated
+
+The old L1-M had two defects, and **neither was catchable by any gate**:
+
+1. Two of its four distractors needed a denominator of **18**, and nothing in the
+   item produced 18 — both sums had a rate-time product of 24. A learner could
+   not produce the option and could not rule it out.
+2. Its headline claim, *"the ratio of two INTERESTS is not the ratio of two
+   PRINCIPALS"*, was **false for its own data**: `1440 : 2160` IS `2 : 3` and so
+   was `6000 : 9000`, so skipping the recovery landed on the key.
+
+The second sum is now **15% for 3 years**, so the rate-time products are 24 and 45
+and the ratios genuinely differ:
+
+| | value |
+|---|---|
+| interest ratio `1440 : 2160` | **2 : 3** (now the trap, and wrong) |
+| principal ratio `6000 : 4800` | **5 : 4** (the key) |
+| collapse denominator | **15 + 3 = 18**, which the item produces |
+
+`G5` recomputes the key and the key was right throughout. `G16` checked that each
+named cause produces its option — and it did, because `1440*100/18` really is
+8,000. **A false claim about how a learner errs is invisible to every gate,
+because it is a claim about people.** That is the honest boundary of this whole
+project and it is now written into the test that guards the item.
+
+`test_L1M_collapse_traps_are_now_reachable` is no longer `xfail`. **The suite has
+zero expected failures.**

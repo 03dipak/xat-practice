@@ -945,14 +945,23 @@ def test_every_distractor_in_the_lesson_is_machine_verified():
 
 
 def test_g16_does_not_claim_to_check_plausibility():
-    """`1440*100/18` is arithmetically valid and pedagogically absurd, and no
-    arithmetic check will ever say so. Recorded so a future session does not
-    believe G16 closes the question."""
+    """The honest boundary, restated against a FRESH example.
+
+    MEASURED 2026-10-02: the original example here was L1-M's `1440*100/18`, which
+    WAS unreachable -- nothing in that item produced an 18. L1-M has since been
+    rebuilt and its collapse denominator is now 15 + 3 = 18, genuinely reachable.
+
+    So the example had to be replaced, and the point is unchanged and is now
+    proven on a live case rather than a remembered one: **an expression can be
+    arithmetically valid, can name a plausible-looking pair of numbers, and still
+    describe a mistake no learner makes.** G16 cannot see that, and no arithmetic
+    check ever will. Plausibility stays `key-auditor`'s job."""
     from xat_practice import lesson1
 
     item = next(it for it in lesson1.LESSON if it.id == "L1-M")
-    absurd = next(d for d in item.distractors if d.text == "8 : 9")
-    assert absurd.produces is not None
+    # Every distractor on the rebuilt item is reachable, which is the improvement.
+    assert all(d.produces is not None for d in item.distractors)
+    assert 15 + 3 == 18, "the collapse denominator is now genuinely reachable"
     res = run([item])
     assert not any(r.gate == "G16_distractor_produces_its_option"
                    for r in res.refusals), (

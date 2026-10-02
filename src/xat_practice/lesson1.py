@@ -194,81 +194,75 @@ MEDIUM = Item(
     id="L1-M",
     subtopic_id=SUBTOPIC,
     stratum=Stratum.QUANT,
+    # MEASURED 2026-10-02: this item was REBUILT, and the reason is the whole
+    # point of it. The previous version had both sums on a rate-time product of
+    # 24 -- 8 x 3 and 12 x 2 -- so the interest ratio 1,440 : 2,160 WAS 2 : 3, and
+    # so was the principal ratio 6,000 : 9,000. The lesson's headline claim,
+    # "the ratio of two INTERESTS is not the ratio of two PRINCIPALS", was FALSE
+    # for its own data, and a learner who skipped the recovery entirely landed on
+    # the key by accident.
+    #
+    # Two changes fix it:
+    #   1. the second sum is now 15% for 3 years, so r x t is 45 and the two ratios
+    #      genuinely DIFFER: interest 1,440 : 2,160 is 2 : 3, principals 6,000 :
+    #      4,800 is 5 : 4. The shortcut is now wrong, which is what makes the
+    #      item worth the marks.
+    #   2. the old "r x t collapsed to 18" distractor is replaced by one that
+    #      REACHES 18 -- because 15 + 3 = 18. The old denominator was unreachable
+    #      from anything in the item, so a learner could not rule the option out.
     stem="A sum earns simple interest of Rs 1,440 at 8% per annum for 3 years. "
-         "Another sum earns simple interest of Rs 2,160 at 12% per annum for "
-         "2 years. What is the ratio of the first sum to the second?",
-    options=("8 : 9", "1 : 1", "2 : 3", "1 : 2", "3 : 2"),
+         "Another sum earns simple interest of Rs 2,160 at 15% per annum for 3 "
+         "years. What is the ratio of the first sum to the second?",
+    options=("2 : 3", "8 : 15", "5 : 4", "1 : 2", "3 : 2"),
     option_values=(
-        "8/9",
-        "1",
         "2/3",
+        "8/15",
+        "5/4",
         "1/2",
         "3/2",
     ),
     key_index=2,
-    derivation="(1440*100/(8*3)) / (2160*100/(12*2))",
+    derivation="(1440*100/(8*3)) / (2160*100/(15*3))",
     distractors=(
         Distractor(
-            text="8 : 9",
-            produces=(sp.Rational(1440*100//18, 2160*100//24)),
-            misconception="the principal of the first sum recovered as "
-                          "1440x100/18 = 8,000 because 8x3 was collapsed to 18 "
-                          "instead of multiplied as 8x3",
+            text="2 : 3",
+            misconception="the interest ratio read straight off, 1,440 : 2,160. "
+                          "This is THE trap for this subtopic and it used to be "
+                          "the key by coincidence; the rates are now different "
+                          "precisely so the shortcut cannot work",
             is_real_near_miss=True,
+            produces="(1440)/(2160)",
+        ),
+        Distractor(
+            text="8 : 15",
+            misconception="each interest divided by its OWN principal instead of "
+                          "the principal recovered from the formula: 1,440/6,000 "
+                          "and 2,160/4,800 are 6/25 and 9/20",
+            is_real_near_miss=True,
+            produces="(1440/6000)/(2160/4800)",
         ),
         Distractor(
             text="1 : 2",
-            produces=(sp.Rational(1440*100//24, 2160*100//18)),
-            misconception="the second principal recovered as "
-                          "2160x100/18 = 12,000 by the same collapse, which "
-                          "makes the answer too small",
+            misconception="the rate and the time on the second sum ADDED, 15 + 3 = "
+                          "18, giving 2,160 x 100 / 18 = 12,000 and halving the "
+                          "ratio. Multiplying and adding look alike on a small "
+                          "screen; keep the brackets",
             is_real_near_miss=True,
+            produces="(1440*100/(8*3))/(2160*100/(15+3))",
         ),
         Distractor(
             text="3 : 2",
-            produces=(sp.Rational(2160, 1440)),
-            misconception="the interest ratio 2160 : 1440 used directly, with "
-                          "the rates and times never inverted out. THE named "
-                          "trap for this subtopic",
+            misconception="the interest ratio inverted, 2,160 : 1,440. Same wrong "
+                          "idea as the first option, stated the other way round",
             is_real_near_miss=True,
-        ),
-        Distractor(
-            # MEASURED 2026-10-02 by `key-auditor`, and confirmed by hand: the
-            # option this replaces was 4 : 3, whose stated cause was "the
-            # interest ratio inverted but not simplified". That is
-            # ARITHMETICALLY IMPOSSIBLE -- 2160 : 1440 is 3 : 2 already in lowest
-            # terms, so there is no unsimplified form to stop at -- and no ratio
-            # of 1440 and 2160 equals 4 : 3 at all. A distractor that cannot be
-            # REACHED is worse than none: a learner cannot rule it out, and the
-            # explanation teaches a false rule.
-            #
-            # 1 : 1 is reachable and is a real mistake. Both sums have r x t = 24,
-            # so 1,440 / 6,000 and 2,160 / 9,000 are BOTH 6/25, and a learner who
-            # DIVIDES each interest by its principal instead of recovering the
-            # principal gets a clean 1 : 1. The fact that the two rates coincide
-            # is what makes this trap sharp, and it is the same coincidence that
-            # weakens this item -- see the note in SOLUTIONS["L1-M"].
-            text="1 : 1",
-            produces=(sp.Rational(1440, 6000) / sp.Rational(2160, 9000)),
-            misconception="each interest divided by its OWN principal instead of "
-                          "the principal recovered from the formula, so "
-                          "1440/6000 and 2160/9000 both came out 6/25 and the "
-                          "ratio flattened to 1 : 1",
-            is_real_near_miss=True,
+            produces="(2160)/(1440)",
         ),
     ),
     derivation_steps=int(LEVEL_RECIPES[Level.MEDIUM]["derivation_steps"]),
     needs_substitution=True,
     insight_required=False,
-    calculator_minutes=1.6,
+    calculator_minutes=1.1,
 )
-
-# ---------------------------------------------------------------------------
-# 4. HARD -- an instalment problem. The insight is that simple interest is a
-#    property of the WHOLE sum for the WHOLE time, so it splits across
-#    instalments in the ratio of the time each covers. The sign error this
-#    topic produces most reliably is SUBTRACTING the interest.
-# ---------------------------------------------------------------------------
 
 HARD = Item(
     id="L1-H",
@@ -464,27 +458,27 @@ SOLUTIONS: dict[str, tuple[str, ...]] = {
     ),
     "L1-M": (
         "The insight: the ratio of two INTERESTS is not the ratio of two "
-        "PRINCIPALS. You must recover each principal first, and the recovery "
-        "is the algebraic inverse of the same formula.",
-        "Step 1 - invert. SI = P x R x T / 100 becomes P = SI x 100 / (R x T).",
+        "PRINCIPALS. Check that it is not: here the interest ratio is 1,440 : "
+        "2,160 = 2 : 3, while the principal ratio is 5 : 4. They genuinely "
+        "differ, so the shortcut cannot work here.",
+        "Step 1 - invert. SI = P x R x T / 100 becomes P = SI x 100 / (R x T). "
+        "That is the same formula solved backwards, not a new formula.",
         "Step 2 - first principal. 1,440 x 100 / (8 x 3) = 144,000 / 24 = 6,000.",
-        "Step 3 - second principal. 2,160 x 100 / (12 x 2) = 216,000 / 24 = "
-        "9,000.",
-        "Step 4 - the ratio. 6,000 : 9,000 = 2 : 3.",
-        "Why 3 : 2 is wrong: that is 2,160 : 1,440, the interest ratio used "
-        "directly with the rates and times never inverted out. It is the "
-        "instinctive answer and it is wrong here because the two sums are on "
-        "different rates AND different times.",
-        "Why 8 : 9 is wrong: 1,440 x 100 / 18 = 8,000, where 8 x 3 was "
-        "collapsed to 18 by addition. Multiplying and adding look similar on a "
-        "small screen, and this is the error. Keep the brackets.",
-        "Why 1 : 2 is wrong: 2,160 x 100 / 18 = 12,000 by the same collapse, so "
-        "the second principal came out too big and the ratio too small.",
-        "Why 1 : 1 is wrong: 1,440 / 6,000 and 2,160 / 9,000 are both 6/25, "
-        "because BOTH sums have a rate-time product of 24. Dividing an interest "
-        "by its own principal compares the two RATES, and the two rates happen "
-        "to be equal here -- which is exactly why this item is a trap and not a "
-        "shortcut.",
+        "Step 3 - second principal. 2,160 x 100 / (15 x 3) = 216,000 / 45 = 4,800.",
+        "Step 4 - the ratio. 6,000 : 4,800, dividing both by 1,200, is 5 : 4.",
+        "Why 2 : 3 is wrong: that is 1,440 : 2,160, the interest ratio used "
+        "directly. It is the instinctive answer and it fails here because the "
+        "two sums carry different rates. Notice that the two ratios are not even "
+        "close: 2:3 against 5:4, so you can see the shortcut break.",
+        "Why 3 : 2 is wrong: the same idea the other way round, 2,160 : 1,440.",
+        "Why 1 : 2 is wrong: 15 + 3 = 18 instead of 15 x 3 = 45, so the second "
+        "principal came out as 2,160 x 100 / 18 = 12,000 and the ratio halved. "
+        "Multiplying and adding are easy to confuse on a small screen. Keep the "
+        "brackets.",
+        "Why 8 : 15 is wrong: 1,440 / 6,000 is 6/25 and 2,160 / 4,800 is 9/20, "
+        "and 6/25 against 9/20 is 8/15. Dividing an interest by its own principal "
+        "compares two RATES rather than two amounts, which is a different "
+        "question from the one asked.",
     ),
     "L1-H": (
         "The insight: the rate is NEVER given. The 30% is an interest for three "

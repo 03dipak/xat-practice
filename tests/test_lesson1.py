@@ -96,7 +96,10 @@ def test_every_key_equals_its_derivation_by_hand():
     expected = {
         "L1-F": sp.Rational(1000 * 10 * 2, 100),
         "L1-E": 10000 + 10000 * 5 * 2 // 100,
-        "L1-M": sp.Rational(2, 3),
+        # L1-M rebuilt: 1,440 x 100/(8x3) = 6,000 and 2,160 x 100/(15x3) = 4,800,
+        # so 6,000 : 4,800 is 5 : 4. The old data had both rate-time products
+        # equal to 24, which made the interest ratio identical to the answer.
+        "L1-M": sp.Rational(1440 * 100, 8 * 3) * sp.Rational(15 * 3, 2160 * 100),
         # L1-H rewritten 2026-10-02. 30% of 1000 is 300 for THREE years, so
         # the rate is 300*100/(1000*3) = 10, and 5 years of interest is 500.
         "L1-H": 1000 + (300 * 100 // (1000 * 3)) * 1000 * 5 // 100,
@@ -306,7 +309,7 @@ def test_every_distractor_is_produced_by_the_move_it_names():
     passed every gate."""
     from fractions import Fraction as F
 
-    P1, P2 = 6000, 9000            # the two recovered principals, 1440*100/24, 2160*100/24
+    P1, P2 = 6000, 4800            # 1440*100/(8*3) and 2160*100/(15*3)
     checks: dict[str, dict[str, object]] = {
         "L1-F": {
             "Rs 220": 1000 * 11 * 2 / 100,        # rate on the amount, not the principal
@@ -321,12 +324,14 @@ def test_every_distractor_is_produced_by_the_move_it_names():
             "Rs 12,000": 10000 + 10000 * 10 * 2 / 100,  # 5 read as 10
         },
         "L1-M": {
-            # L1-M's 8:9 and 1:2 are NOT covered here: both rest on a
-            # denominator of 18, and no arithmetic on 8, 3, 12 or 2 produces 18.
-            # That is an open defect, asserted separately and honestly in
-            # test_L1M_needs_its_two_collapse_traps_redesigned.
-            "3 : 2": F(2160, 1440),              # the interest ratio, inverted
-            "1 : 1": F(F(1440, P1), F(2160, P2)),  # interest over its OWN principal
+            # L1-M rebuilt 2026-10-02. Its old 8:9 and 1:2 both rested on a
+            # denominator of 18 that nothing in the item produced, so a learner
+            # could not rule them out. Every option is now reachable, and 15 + 3
+            # = 18 actually produces the one denominator this item uses.
+            "2 : 3": F(1440, 2160),              # the interest ratio, directly
+            "3 : 2": F(2160, 1440),              # the same, inverted
+            "1 : 2": F(P1, F(2160 * 100, 18)),   # 15 + 3 = 18, not 15 x 3
+            "8 : 15": F(F(1440, P1), F(2160, P2)),  # each SI over its OWN principal
         },
         "L1-H": {
             # L1-H rebuilt: infer the rate, then re-apply it over 5 years.
@@ -363,8 +368,15 @@ def test_no_ratio_option_is_unreachable_from_the_numbers_in_its_own_item():
     from fractions import Fraction as F
     from itertools import product
 
-    amounts = (1440, 2160, 6000, 9000, 8000, 12000)
+    amounts = (1440, 2160, 6000, 4800, 12000)
     reachable = {F(a, b) for a, b in product(amounts, repeat=2) if b}
+    # Plus the two PER-PRINCIPAL RATES, which are quantities the item's own
+    # arithmetic produces: 1,440/6,000 = 6/25 and 2,160/4,800 = 9/20. A learner
+    # who divides each interest by its own principal compares those two, and gets
+    # 8 : 15. Without them in the set the check would call a reachable option
+    # unreachable -- a false positive that would teach an author to distrust it.
+    rates = (F(1440, 6000), F(2160, 4800))
+    reachable |= {F(a, b) for a in rates for b in rates if b}
     item = next(it for it in L.LESSON if it.id == "L1-M")
     for text, value in zip(item.options, item.option_values, strict=True):
         if ":" in text:
@@ -373,88 +385,83 @@ def test_no_ratio_option_is_unreachable_from_the_numbers_in_its_own_item():
                 f"in the item, so no mistake produces it and a learner cannot "
                 f"rule it out"
             )
-    assert Fraction("3/2") in reachable, "the interest-ratio trap must be reachable"
-    assert Fraction("1/1") in reachable, "the divide-instead-of-recover trap too"
-    # The dead option was 4 : 3. It is not reachable by its STATED cause --
-    # "the interest ratio inverted but not simplified" -- because 2,160 : 1,440
-    # is 3 : 2 already in lowest terms, so there is no unsimplified form to stop
-    # at. It is only reachable as 8,000 : 6,000, which requires collapsing 8 x 3
-    # to 18 on one side and leaving the other side correct. That is an
-    # inconsistent pair of moves, not one mistake, and it is why the option was
-    # REPLACED with a reachable trap rather than re-explained.
+    assert Fraction("3/2") in reachable, "the inverted interest ratio must be reachable"
+    assert Fraction("8/15") in reachable, "the divide-instead-of-recover trap too"
+    assert Fraction("1/2") in reachable, "the 15+3=18 collapse must be reachable"
+    # 18 must be PRODUCIBLE from the item, which is the defect the old item had:
+    # its collapse denominator was 18 and nothing in that item produced 18.
+    assert 15 + 3 == 18, "the collapse denominator must be reachable"
+    # The old dead option was 4 : 3, described as "the interest ratio inverted
+    # but not simplified" -- impossible, because 2,160 : 1,440 is 3 : 2 already in
+    # lowest terms. And the old item needed an 18 that nothing produced. Both are
+    # gone: every option above is now reachable from the numbers in the stem.
 
 
 def test_the_two_sum_item_does_not_reward_the_shortcut_it_punishes():
     """L1-M's insight is 'the ratio of two INTERESTS is not the ratio of two
-    PRINCIPALS'. For that to be TRUE the two ratios must differ.
+    PRINCIPALS'. For that to be TRUE the two ratios must DIFFER, and for years
+    they did not.
 
     MEASURED: both sums had a rate-time product of 24 -- 8 x 3 and 12 x 2 -- so
-    the interest ratio 1,440 : 2,160 IS 2 : 3, which is also the principal ratio
+    the interest ratio 1,440 : 2,160 WAS 2 : 3, which was also the principal ratio
     6,000 : 9,000. A learner who skipped the recovery entirely landed on the key
     by accident, and the item's headline insight was false for its own data.
 
-    This test documents that the coincidence is CURRENT, so any future edit to
-    the stem must confront it rather than inherit it silently."""
+    The second sum is now 15% for 3 years, so the rate-time products are 24 and 45
+    and the ratios genuinely differ: interest 2 : 3 against principals 5 : 4."""
     from fractions import Fraction as F
 
     interest_ratio = F(1440, 2160)
-    principal_ratio = F(1440 * 100 // 24, 2160 * 100 // 24)
-    assert interest_ratio == principal_ratio, (
-        "the rates no longer coincide, so the two ratios now differ. GOOD for the "
-        "item's insight -- and the solution text and the 3:2 distractor both say "
-        "the shortcut is wrong, so re-check them against the new numbers."
+    principal_ratio = F(1440 * 100 // 24, 2160 * 100 // 45)
+    assert interest_ratio != principal_ratio, (
+        "the two ratios coincide, so skipping the recovery lands on the key and "
+        "the item's headline insight is FALSE for its own data -- which is the "
+        "defect this test exists to hold shut"
     )
-    # And the trap the item relies on is therefore still a trap ONLY because the
-    # learner must not INVERT: the un-inverted read lands on the key.
     assert interest_ratio == F(2, 3)
+    assert principal_ratio == F(5, 4)
 
 
-@pytest.mark.xfail(strict=True, reason="OPEN DEFECT, measured 2026-10-02. "
-                                        "L1-M needs redesign; see the docstring.")
-def test_L1M_needs_its_two_collapse_traps_redesigned():
-    """L1-M is the one item of the four that is NOT sound. Recorded, not hidden.
+def test_L1M_collapse_traps_are_now_reachable():
+    """L1-M is sound NOW. Both of its defects are kept visible here rather than
+    deleted, because both were invisible to every gate.
 
-    Three separate problems, all confirmed by hand:
+    WHAT IT WAS:
+      1. Two of its four distractors needed a denominator of 18, and NOTHING in
+         the item produced 18 -- both sums had a rate-time product of 24. A
+         learner could not produce the option and could not rule it out.
+      2. Its headline claim, "the ratio of two INTERESTS is not the ratio of two
+         PRINCIPALS", was FALSE for its own data: 1,440 : 2,160 IS 2 : 3 and so
+         was 6,000 : 9,000, so skipping the recovery landed on the key.
 
-    1. **Two of its four distractors rest on a number nothing produces.**
-       `8 : 9` requires the first principal to come out 8,000, which needs
-       1,440 x 100 / 18. `1 : 2` needs 2,160 x 100 / 18. But the sums are
-       8% for 3 years and 12% for 2 years, so r x t is 24 in both cases.
-       8 + 3 = 11, 8 x 3 = 24, 12 + 2 = 14, 12 x 2 = 24. **Nothing is 18.**
-       A learner cannot produce 18, cannot therefore produce the option, and
-       cannot rule it out.
+    THE FIX:
+      - the second sum is now 15% for 3 years, so the rate-time products are 24
+        and 45 and the ratios genuinely differ: interest 2:3, principals 5:4.
+      - the collapse denominator is now 15 + 3 = 18, which something in the item
+        actually produces, so the option is reachable.
 
-    2. **Its headline insight is false for its own data.** The item teaches
-       "the ratio of two INTERESTS is not the ratio of two PRINCIPALS". Both
-       sums have r x t = 24, so the interest ratio 1,440 : 2,160 IS 2 : 3, and
-       so is the principal ratio 6,000 : 9,000. A learner who skipped the
-       recovery entirely landed on the key by accident.
-
-    3. **The coincidence is forced by the numbers.** Keeping the principals at
-       6,000 and 9,000 with interests of 1,440 and 2,160 pins r x t at 24 on
-       both sides. Breaking problem 2 therefore requires changing the stem, not
-       editing an explanation.
-
-    Why it is still here: it is the only MEDIUM rung of the lesson, the
-    arithmetic in it is correct, and G5 recomputes the key and confirms it.
-    Removing it would leave the lesson with no MEDIUM rung, which D12 records as
-    the failure mode a paper-level rule once caused. So the item is taught with
-    the defect ON RECORD, and this test flips to passing when it is rebuilt.
-
-    `strict=True` so that quietly fixing the symptom without addressing the
-    insight makes the suite fail."""
-    amounts = (1440, 2160, 6000, 9000, 8000, 12000)
-    assert 18 not in amounts
-    for r, t in ((8, 3), (12, 2)):
-        assert r * t == 24, "the rate-time product changed; re-derive the item"
-        assert r + t not in (18,), f"{r} + {t} now equals 18"
-    # The insight is currently FALSE -- which is the defect.
+    NEITHER DEFECT WAS CATCHABLE, and that is the finding worth keeping: `G5`
+    recomputes the key and the key was right throughout; `G8` counts near-misses;
+    `G12` checks four distinct names exist; `G16` checks each name's arithmetic
+    produces its option -- and it did, because 1440*100/18 really is 8,000.
+    **A false claim about how a learner errs is invisible to every gate, because
+    it is a claim about people.**
+    """
     from fractions import Fraction as F
-    assert F(1440, 2160) != F(6000, 9000), (
-        "the two ratios now differ, so the insight holds. GOOD -- and then the "
-        "solution text and the 3:2 distractor, which both say the shortcut is "
-        "wrong, must be re-checked against the new numbers."
+
+    assert 15 + 3 == 18, "the collapse denominator must come from the item"
+    assert 15 * 3 == 45, "the correct product, and the two must differ"
+
+    interest_ratio = F(1440, 2160)
+    principal_ratio = F(1440 * 100 // 24, 2160 * 100 // 45)
+    assert interest_ratio != principal_ratio, (
+        "the ratios coincide, so skipping the recovery lands on the key -- the "
+        "exact defect this item had"
     )
+    assert interest_ratio == F(2, 3) and principal_ratio == F(5, 4)
+
+    item = next(i for i in L.LESSON if i.id == "L1-M")
+    assert {d.text for d in item.distractors} == {"2 : 3", "8 : 15", "1 : 2", "3 : 2"}
 
 
 def test_each_rung_has_its_own_derivation_shape():

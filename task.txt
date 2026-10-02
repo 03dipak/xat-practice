@@ -64,7 +64,7 @@ recreated. **If you rename again, recreate the venv too:**
 
 Last COMPLETED full gate, at the new path, this session:
 
-    247 passed, 1 xfailed
+    248 passed
     96.64% coverage on src/xat_practice/*.py, ALL NINE FILES
     ruff clean, mypy clean on 9 source files
     CLI smoke-tested AND unit-tested: gates, build, ev, levels, shapes,
@@ -120,7 +120,7 @@ session while measuring eight files out of nine. See DECISIONS.md section 6.4.
       bundle.py               static bundle + paper/key file split
       build_opencode.py       single source of the shared 10.8 KB block
 cli.py                8 verbs
-    tests/                    8 modules, 247 tests
+    tests/                    8 modules, 248 tests
     tools/ui_probe.{html,py}   the rendered-DOM check: a real headless
                               Chromium drives the built lesson. 38 checks, and it
                               loads the REAL style.css -- with the CSS inline
