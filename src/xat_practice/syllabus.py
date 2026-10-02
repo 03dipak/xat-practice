@@ -34,6 +34,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import TypedDict
 
 PAPERS = (2020, 2021, 2022, 2023, 2024, 2025, 2026)
 QUESTIONS_PER_PAPER = 28
@@ -401,7 +402,31 @@ def stratum_counts() -> dict[Stratum, int]:
     return out
 
 
-PAPER_SHAPE = {
+class PaperShapeSpec(TypedDict):
+    """The XAT 2026 paper, as measured from XLRI's own notification.
+
+    Typed, not a bare dict. MEASURED 2026-10-02: an untyped dict cost seven mypy
+    errors in `coverage.py` -- every access came back as `object` and had to be
+    silenced. The spec is the single most quoted set of numbers in the project, so
+    a typo in a key should be a type error rather than a string comparison that
+    quietly fails.
+    """
+
+    total_questions: int
+    part1_minutes: int
+    part1: dict[str, int]
+    part2: dict[str, int]
+    options: int
+    mark_correct: float
+    mark_wrong: float
+    blank_penalty_after: int
+    blank_penalty: float
+    gk_in_percentile: bool
+    sectional_time_limit: bool
+    calculator: str
+
+
+PAPER_SHAPE: PaperShapeSpec = {
     "total_questions": 95,
     "part1_minutes": 170,
     "part1": {"qa_di": 28, "va_lr": 26, "dm": 21},

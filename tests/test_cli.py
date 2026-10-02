@@ -444,3 +444,118 @@ def test_the_bundle_directory_is_derived_from_the_lesson_id():
 
     assert out_dir("lesson-01-simple-interest").name == "lesson-01-simple-interest"
     assert out_dir("a").name == "a", "the path must come from the id, not a constant"
+
+
+# ---------------------------------------------------------------------------
+# docs/COVERAGE.md is DERIVED, and this is the proof it cannot drift
+# ---------------------------------------------------------------------------
+# MEASURED 2026-10-02: `xat-practice weightage` printed `written: 4` -- the ITEM
+# count -- beside two SUBTOPIC counts on a project with 40 subtopics, and read as
+# "four topics done" when the truth was one. A status document that people edit
+# by hand would carry that lie for longer, and nobody would know.
+
+COVERAGE_DOC = Path(__file__).resolve().parent.parent / "docs" / "COVERAGE.md"
+
+
+def _generated_block_from_doc() -> str:
+    from xat_practice.coverage import BEGIN, END
+
+    text = COVERAGE_DOC.read_text()
+    start = text.index(BEGIN)
+    stop = text.index(END, start)
+    chunk = text[start + len(BEGIN):stop]
+    assert "```" in chunk, "the generated block must be fenced"
+    fenced = chunk.strip().strip("`")
+    return fenced.strip()
+
+
+def test_coverage_doc_matches_the_verb_exactly():
+    """The staleness test. If code moves and the document does not, this fails.
+
+    It compares the FENCED BLOCK only, not the whole file, so the prose around it
+    is free to change without touching a test. A test over the whole document
+    would fail every time a sentence is edited, and a test that fails on prose
+    gets deleted."""
+    from xat_practice.coverage import render_coverage
+
+    assert COVERAGE_DOC.exists(), "docs/COVERAGE.md is the readable ledger"
+    assert _generated_block_from_doc() == render_coverage(), (
+        "docs/COVERAGE.md has drifted from `xat-practice coverage`. Re-run the "
+        "verb and paste its output into the fenced block between the BEGIN/END "
+        "markers. Do not hand-edit the numbers inside the block."
+    )
+
+
+def test_coverage_doc_states_the_scope_on_its_first_lines():
+    """A coverage document read as 'XAT coverage' is the exact misreading this
+    file exists to prevent, so the limit is in the first paragraph."""
+    head = COVERAGE_DOC.read_text().split("\n\n")[0] + COVERAGE_DOC.read_text().split("\n\n")[1]
+    assert "28 of the 95" in head, (
+        "the first lines must say we train 28 of the 95 questions -- QA&DI only"
+    )
+    for absent in ("VA&LR", "DM"):
+        assert absent in head, f"{absent} must be named as untrained"
+    assert "GK" in head, "GK is out of scope and must be named"
+
+
+def test_coverage_never_puts_a_topic_rate_on_a_subtopic_row():
+    """MEASURED: no source gives a per-subtopic frequency. XLRI publishes no
+    breakdown and ours is a coaching compilation at topic level, so a q/yr on a
+    subtopic row would be a number nobody measured."""
+    from xat_practice.coverage import render_coverage
+
+    out = render_coverage()
+    assert "q/yr" not in out, (
+        "a per-subtopic rate appears in the ledger. There is no source for one."
+    )
+    assert "per_year" not in out
+
+
+def test_coverage_reports_subtopics_and_items_separately():
+    from xat_practice.coverage import render_coverage, totals
+
+    t = totals()
+    out = render_coverage()
+    assert f"subtopics written   {t['subtopics_written']:>3}" in out
+    assert f"items written       {t['items_written']:>3}" in out
+    assert t["subtopics_pending"] == (t["subtopics_trained"]
+                                      - t["subtopics_written"])
+
+
+def test_the_block_capacity_number_is_the_honest_one():
+    """MEASURED 2026-10-02: this is the number the 20-question plan turns on, and
+    it is zero. Every subtopic has fewer than 10 named traps, including the one
+    that was just expanded to 8.
+
+    A test that pins it is a test that will FAIL the day the pool grows -- which
+    is the correct direction for a capacity figure: it should announce the
+    improvement, and any change must be argued rather than absorbed."""
+    from xat_practice.coverage import (
+        BLOCK_SHAPES_RELAXED,
+        BLOCK_TRAPS_FULL,
+        subtopic_rows,
+        totals,
+    )
+
+    t = totals()
+    rows = subtopic_rows()
+    assert t["can_carry_block"] == sum(
+        1 for r in rows if r["traps"] >= BLOCK_SHAPES_RELAXED)
+    assert len(rows) == t["subtopics_trained"], "every trained subtopic gets a row"
+    if t["can_carry_block"] < t["subtopics_trained"]:
+        assert any(r["block_capacity"] == "cannot carry a block" for r in rows), (
+            "a subtopic below the threshold must say so on its row"
+        )
+    assert BLOCK_TRAPS_FULL > BLOCK_SHAPES_RELAXED, (
+        "full variety is a higher bar than the relaxed shape budget, and the two "
+        "must not be the same number or the second column means nothing"
+    )
+
+
+def test_coverage_lists_the_written_subtopic_as_written():
+    from xat_practice.coverage import render_coverage
+
+    out = render_coverage()
+    assert "WRITTEN" in out
+    assert "pl_int:simple-interest" in out
+    assert out.count("WRITTEN") == 1, "exactly one lesson is written"

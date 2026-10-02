@@ -1258,3 +1258,71 @@ project and it is now written into the test that guards the item.
 
 `test_L1M_collapse_traps_are_now_reachable` is no longer `xfail`. **The suite has
 zero expected failures.**
+
+---
+
+## 13. D22 — the coverage ledger, and the number the 20-item plan turns on
+
+**Ruled 2026-10-02.** The owner asked for "one file" to remember which topics are
+pending. It is built, and it is **derived**, because a hand-maintained status file
+is where the `written: 4` lie would have gone to hide.
+
+`coverage.render_coverage()` is a pure function over `syllabus` and `registry`.
+`docs/COVERAGE.md` is a committed snapshot of it between BEGIN/END markers, and
+`test_coverage_doc_matches_the_verb_exactly` compares the **fenced block only**.
+
+**Why the block and not the whole file.** A test over the whole document fails
+every time a sentence is edited, and a test that fails on prose gets deleted.
+Falsified before it was accepted: hand-editing `1 of 40` to `4 of 40` — the exact
+lie the document exists to prevent — fails with
+`docs/COVERAGE.md has drifted from 'xat-practice coverage'`.
+
+### 13.1 The measurement, and it is zero
+
+```
+block capacity        0 of 40 subtopics have >= 10 named traps
+```
+
+**Not one subtopic can carry a 20-item block.** Including
+`pl_int:simple-interest`, which was just expanded to 8 traps — the best in the
+project. The distribution is 2–3 traps almost everywhere, against the 10 the
+relaxed shape budget would need.
+
+This is the answer to the question Pass 1 was called to answer, and it is
+uncomfortable: **a 20-item block on one subtopic is not hard, it is impossible by
+construction** at the current trap pool. That is a different thing from what
+`question-setter` reported, and the difference is §12.1.
+
+`test_the_block_capacity_number_is_the_honest_one` pins it — so the number will
+**fail the day the pool grows**, which is the correct direction for a capacity
+figure: an improvement has to be argued, not absorbed.
+
+### 13.2 What the ledger deliberately does not print
+
+**No `q/yr` column.** MEASURED: the weight model is per **topic**, from a coaching
+compilation over 196 questions; XLRI publishes no breakdown and **no source gives
+a per-subtopic frequency.** Putting a topic's rate on a subtopic row would be
+inventing one. `test_coverage_never_puts_a_topic_rate_on_a_subtopic_row` refuses
+the string `q/yr` anywhere in the ledger.
+
+**The scope is the first line of the document**, not a footnote: this trains
+**28 of the 95** questions, QA&DI only. VA&LR and DM are untrained and named as
+such; GK is out of scope. A coverage document read as "XAT coverage" is the exact
+misreading it exists to prevent.
+
+### 13.3 Second-hand weightages, recorded and never merged
+
+Both external summaries cite **the same two URLs**, so they are one source counted
+twice. They agree with our measured table on DI 6.71, geometry 4.57, number system
+2.86, modern-math being low, and they **confirm** the trigonometry exclusion. Both
+also place DI late, which is independent support for D14. Their percentages are
+**ranges** — `18–35%` of a section — and a range is an estimate, not a
+measurement. Neither was used to add, remove or reweight a topic.
+
+### 13.4 A type, because the spec is the most-quoted thing here
+
+`syllabus.PAPER_SHAPE` was an untyped dict and cost **seven mypy errors** in
+`coverage.py`, every access arriving as `object`. It is now a `TypedDict`
+(`PaperShapeSpec`), and the ledger's own rows are a `SubtopicRow` TypedDict, so a
+typo in a spec key is a type error rather than a string comparison that quietly
+fails.

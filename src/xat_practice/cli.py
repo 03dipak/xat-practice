@@ -130,6 +130,21 @@ def cmd_ev(_: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_coverage(_: argparse.Namespace) -> int:
+    """The coverage ledger: trained, written, pending, and block capacity.
+
+    DERIVED from `syllabus` and `registry` -- never maintained by hand. MEASURED
+    2026-10-02: `weightage` printed `written: 4`, which is the ITEM count, beside
+    two SUBTOPIC counts on a project with 40 subtopics. `docs/COVERAGE.md` is a
+    committed snapshot of THIS function and a test compares them, so the document
+    cannot drift from the code.
+    """
+    from .coverage import render_coverage
+
+    print(render_coverage())
+    return 0
+
+
 def cmd_shapes(_: argparse.Namespace) -> int:
     """Print the paper shapes and the level quotas they imply."""
     from .items import FULL_MOCK, PRACTICE_SHAPE, QUANT_MOCK
@@ -239,6 +254,8 @@ def main(argv: list[str] | None = None) -> int:
         fn=cmd_ev)
     sub.add_parser("shapes", help="paper shapes, quotas, level recipes").set_defaults(
         fn=cmd_shapes)
+    sub.add_parser("coverage", help="trained / written / pending, and block capacity"
+                   ).set_defaults(fn=cmd_coverage)
 
     s = sub.add_parser("serve", help="serve a lesson over loopback http")
     s.add_argument("--port", type=int, default=8000)
