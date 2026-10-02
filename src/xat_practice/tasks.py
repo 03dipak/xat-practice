@@ -405,6 +405,165 @@ TASKS: tuple[Task, ...] = (
         source="AGENTS.md tester role",
     ),
 
+    # ------------------------------------------- REVIEWED 2026-10-02 (viewer +
+    # question-setter, on the lesson loop). These arrived AFTER the board was
+    # built, from two agents sitting and reading the same flow.
+    Task(
+        id="TASK-050", type="bug", epic="LESSON-LOOP", priority="P0", status="TODO",
+        owner="code-reviewer", evidence="the source",
+        title="state.log indices corrupt when levels are visited out of order",
+        why=("MEASURED by `viewer` by instrumenting Array.prototype.push: push "
+             "indices came out 0, 2, 3, 4. `jumpTo(n)` does `state.log[n] = null`, "
+             "which EXTENDS the array, so the next push lands one index too high and "
+             "each jump nulls the index the previous row occupied. A learner who "
+             "answered all four rungs via the tabs was shown **\"You attempted 2 of "
+             "4 levels\"** with two of their answers gone, and the count, the rows "
+             "and the tab bar were three different accounts of one session. "
+             "Introduced by the level tabs; this is the screen the owner pasted."),
+        acceptance=("answers survive any visiting order; the count, the rows and the "
+                    "tab bar agree"),
+        falsifying_input=("answer all four rungs via the tabs and assert all four "
+                          "appear -- before the fix, 2 of 4"),
+        source="viewer, 2026-10-02",
+    ),
+    Task(
+        id="TASK-051", type="bug", epic="LESSON-LOOP", priority="P0", status="TODO",
+        owner="level-auditor", evidence="derive_level output vs the claimed tier",
+        title="G17 is SET-level, so a second item at any level can refuse the lot",
+        why=("MEASURED by `question-setter`: five correct, fully-passing FOUNDATION "
+             "geometry items with four DIFFERENT derivations were admitted 0 of 5 -- "
+             "one gate, G17, refused the whole set because two of them reduce to "
+             "the same digit-masked shape `N*N/N`. Cost is all-or-nothing, not "
+             "linear. **This is what makes \"more at this level\" impossible today:** "
+             "the route has nothing behind it."),
+        acceptance=("a ruling: per-level shape scope, or an explicit relaxation for a "
+                    "single-level drill. Until then every \"more\" is 0/n."),
+        falsifying_input=("the five items above ARE the falsifying input; they must be "
+                          "admitted before TASK-010 can be built"),
+        source="question-setter, 2026-10-02",
+    ),
+    Task(
+        id="TASK-052", type="bug", epic="LESSON-LOOP", priority="P1", status="TODO",
+        owner="viewer", evidence="a rendered finish screen",
+        title="The finish screen's advice is a CONSTANT, not a function of the outcome",
+        why=("MEASURED by both agents independently. `question-setter` ran four "
+             "outcome patterns (all-wrong-unsure, all-wrong-sure, all-right-unsure, "
+             "mixed) and got **byte-identical** action paragraphs except one clause "
+             "driven by `wasSure.length`. The two action blocks branch only on "
+             "`attempted.length >= 2` and on `wasSure.length`. So TASK-011's own "
+             "falsifying input -- two patterns producing different screens -- FAILS "
+             "today. It is a per-item log dressed as a diagnosis."),
+        acceptance=("two different answer patterns must produce different, specific "
+                    "next actions; asserted, not eyeballed"),
+        falsifying_input=("all-wrong-unsure vs all-right-unsure must differ in more "
+                          "than a count"),
+        source="viewer + question-setter",
+    ),
+    Task(
+        id="TASK-053", type="bug", epic="LESSON-LOOP", priority="P1", status="TODO",
+        owner="viewer", evidence="the rendered page",
+        title=("'You worked through every level' claims understanding, and suggests "
+               "a rung above HARD"),
+        why=("printed on `attempted == total`, so attempted is reported as "
+             "understood. And the advice says \"take another level above\" even "
+             "when the only logged rung is HARD, where there is no level above. The "
+             "one claim n=1 DOES support is never made: if FOUNDATION was missed, "
+             "everything above it is **unmeasured, not wrong**."),
+        acceptance=("scope is stated; the cross-rung sentence is suppressed when n < 2 "
+                    "or when no rung exists above; unmeasured is distinguished from "
+                    "wrong"),
+        falsifying_input="a log containing only HARD must not print 'a level above'",
+        source="question-setter",
+    ),
+    Task(
+        id="TASK-054", type="bug", epic="LESSON-LOOP", priority="P1", status="TODO",
+        owner="code-reviewer", evidence="the source",
+        title="'One question per level' is NOT enforced where the build looks",
+        why=("MEASURED: `registry._assert_one_rung_per_level` checks AT LEAST one "
+             "per level, not exactly one -- a lesson with 2 items at a level passes. "
+             "And `test_lesson_shape_is_one_question_per_level` asserts a frozen "
+             "constant's quota and **never reads a lesson**, yet PEDAGOGY section 1 "
+             "cites it as the enforcement. So the rule I have been quoting is a "
+             "convention held by per-file test literals."),
+        acceptance=("either the registry enforces the count, or every doc that "
+                    "cites it is corrected -- starting with PEDAGOGY section 1 and "
+                    "docs/LLD.md"),
+        falsifying_input=("put 2 items at FOUNDATION in a lesson and show the build "
+                          "accepts it"),
+        source="question-setter",
+    ),
+    Task(
+        id="TASK-055", type="bug", epic="LESSON-LOOP", priority="P2", status="TODO",
+        owner="viewer", evidence="the rendered page",
+        title="The rung you just answered never turns green",
+        why=("the bar redraws only in render() and finish(), so it lags a rung "
+             "behind: on the finish screen under the words \"You worked through "
+             "every level\", FOUNDATION/EASY/MEDIUM are green and HARD -- the rung "
+             "just finished -- is the only white one."),
+        acceptance="answering a rung marks it done immediately.",
+        falsifying_input="answer FOUNDATION, stay put, and assert its tab is done",
+        source="viewer",
+    ),
+    Task(
+        id="TASK-056", type="bug", epic="TEST-INFRA", priority="P1", status="TODO",
+        owner="tester", evidence="the gate suite over a named population",
+        title="A null option_value takes the WHOLE gate run down",
+        why=("`Item(option_values=(None,)*5)` makes `key_value` None and "
+             "`SOLVER.verify` raises AttributeError at solver.py:171. G2 "
+             "short-circuits an out-of-range key but not a null VALUE, so the run "
+             "aborts instead of refusing the item. Found by question-setter as "
+             "out of scope and routed here."),
+        acceptance="a null option value refuses the item; the other items still gate.",
+        falsifying_input="that exact Item; the run must not raise",
+        source="question-setter, 2026-10-02",
+    ),
+    Task(
+        id="TASK-057", type="task", epic="LESSON-LOOP", priority="P2", status="TODO",
+        owner="doc-reviewer", evidence="prose against the files",
+        title="PEDAGOGY section 2's diagram puts the confidence click AFTER the solution",
+        why=("the ASCII diagram shows confidence after the solution; the code does "
+             "sure/unsure BEFORE the options, which matches the owner's brief. The "
+             "code is right and the doc is wrong -- the fifth doc-versus-code drift "
+             "in this project."),
+        acceptance="the diagram matches the code, or is redrawn and labelled as a "
+                    "different flow",
+        falsifying_input="read the diagram and the code side by side",
+        source="question-setter",
+    ),
+    Task(
+        id="TASK-058", type="task", epic="LESSON-LOOP", priority="P2", status="TODO",
+        owner="mentor", evidence="the source",
+        title=("Tab jumps have no prerequisite check, and clicking FOUNDATION "
+               "replays the teach card"),
+        why=("HARD is one click from cold with no formula and no bridge, and the "
+             "teach card is keyed on `state.i === 0` rather than on 'have I read "
+             "it', so returning to FOUNDATION re-runs it and destroys any progress "
+             "on that rung. Cheap in marks -- each solution is self-contained -- but "
+             "the rung is spent guessing."),
+        acceptance=("a tab that is out of reach says why; the teach card is shown "
+                    "once per lesson, not once per visit to rung 0"),
+        falsifying_input=("jump HARD from cold and confirm no prerequisite was "
+                          "surfaced; visit FOUNDATION twice and confirm the card "
+                          "does not replay"),
+        source="viewer + question-setter",
+    ),
+    Task(
+        id="TASK-059", type="bug", epic="LESSON-LOOP", priority="P2", status="TODO",
+        owner="code-reviewer", evidence="the source and the ledger",
+        title="capacity() reads trap COUNT, which is blind to the constraint that measured 0/5",
+        why=("it reads len(traps) only. A subtopic with 100 traps and one derivation "
+             "shape still reads 'full trap variety' while carrying a 2-item block at "
+             "0/n. TASK-051 is that constraint. Also TASK-015's threshold is ~4x low: "
+             "the authored convention is 4 named misconceptions PER ITEM, so 16 per "
+             "lesson, and a 20-item single-level drill is 80 trap-USAGES on one "
+             "subtopic while BLOCK_TRAPS_FULL = 20 assumes one per item."),
+        acceptance=("capacity reflects distinct authored misconceptions per item, and "
+                    "the threshold states its unit"),
+        falsifying_input=("a subtopic with 20 traps all of one derivation shape must "
+                          "not read as full"),
+        source="question-setter",
+    ),
+
     # ------------------------------------------------------------- DOCUMENTATION
     Task(
         id="TASK-040", type="decision", epic="DOCUMENTATION", priority="P2",
