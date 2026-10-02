@@ -18,6 +18,7 @@ WHY THIS FILE IS THE IMPORTANT ONE
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -342,6 +343,19 @@ def recipe(level: Level, options: int = 5) -> tuple[Distractor, ...]:
 
 @dataclass(frozen=True, slots=True)
 class PaperShape:
+    """The shape of a THING: a paper, a lesson, or a single-level drill.
+
+    `level_filtered` is the field that keeps D26 true in code rather than in a
+    comment. A drill is the learner's chosen level, repeated; a paper has a mix
+    because the exam has one. MEASURED 2026-10-02: `_enforce_mix` returns early
+    below `MIX_ENFORCEMENT_FLOOR` (8), which protected a five-item drill -- but a
+    learner asking for **twenty** single-digit items at one level is above the
+    floor, so G11 would have dropped fifteen of them for "foundation over quota".
+    That is D12's defect exactly: a paper rule handed a non-paper.
+
+    So the shape says what it is, and G11 refuses to enforce a mix on a shape that
+    has none.
+    """
     name: str
     questions: int
     minutes: int
@@ -349,6 +363,7 @@ class PaperShape:
     stratum: Stratum
     negative_marking: bool
     options: int = 5
+    level_filtered: bool = False
 
     def quota(self) -> dict[Level, int]:
         """Per-level question counts that sum to `questions`.
@@ -391,6 +406,67 @@ PRACTICE_SHAPE = PaperShape(
     stratum=Stratum.QUANT,
     negative_marking=False,
 )
+
+#: THE OWNER'S "INITIAL SET": five questions at every level.
+#:
+#: MEASURED 2026-10-02: `LESSON_SHAPE` above is ONE question per level -- four in
+#: total -- and the owner asked for five at each level, so twenty for a subtopic.
+#: The quota closes at 5/5/5/5 because the mix is uniform (0.25 each) over 20.
+LESSON_20_SHAPE = PaperShape(
+    name="LESSON-20",
+    questions=20,
+    minutes=0,
+    level_mix={Level.FOUNDATION: 0.25, Level.EASY: 0.25,
+               Level.MEDIUM: 0.25, Level.HARD: 0.25},
+    stratum=Stratum.QUANT,
+    negative_marking=False,
+)
+
+#: "GIVE ME MORE AT THIS LEVEL, single-digit answers" -- the owner's second ask.
+#:
+#: One shape per level, `level_filtered=True`, so `G11` cannot enforce a paper mix
+#: on a drill. The count is a CAP, not a quota: `quota()` would apportion, and
+#: `max(1, ...)` in `_enforce_mix` is exactly what makes a one-level paper
+#: impossible to express.
+LEVEL_DRILL_SHAPES: dict[Level, PaperShape] = {
+    lv: PaperShape(
+        name=f"DRILL-{lv.value.upper()}",
+        questions=5,
+        minutes=0,
+        level_mix={other: (1.0 if other is lv else 0.0) for other in LEVEL_ORDER},
+        stratum=Stratum.QUANT,
+        negative_marking=False,
+        level_filtered=True,
+    )
+    for lv in LEVEL_ORDER
+}
+
+#: Answers a learner can hold in their head and check. The owner's "single digit
+#: question" -- MEASURED 2026-10-02: giving a bounded answer space is what makes
+#: unlimited extra questions possible WITHOUT padding, because the variety has to
+#: come from the reasoning (which G6 already enforces) rather than the numbers.
+SINGLE_DIGIT_MIN = 1
+SINGLE_DIGIT_MAX = 9
+
+
+def answer_is_single_digit(value: object) -> bool:
+    """True when `value` is an integer 1..9 inclusive.
+
+    Deliberately a PREDICATE and not a stored flag. MEASURED 2026-10-02: a stored
+    `single_digit: bool` on the item would be a claim the code never re-derived, and
+    this project's whole thesis is that a claim code did not compute is not evidence.
+    """
+    try:
+        n = float(str(value))
+    except (TypeError, ValueError):
+        return False
+    return n.is_integer() and SINGLE_DIGIT_MIN <= n <= SINGLE_DIGIT_MAX
+
+
+def single_digit_items(items: Iterable[Item]) -> list[Item]:
+    """The subset whose KEY is a single digit -- what "more like this" returns."""
+    return [it for it in items if answer_is_single_digit(it.key_value)]
+
 
 #: The verified XAT 2026 paper. 6.71 DI questions/yr at ~2 min each, against a
 #: 170-minute budget for all 75 Part-1 questions = 136 s/question. So the top of

@@ -172,6 +172,42 @@ TASKS: tuple[Task, ...] = (
 
     # ------------------------------------------------------------- LESSON LOOP
     Task(
+        id="TASK-060", type="task", epic="LESSON-LOOP", priority="P1", status="DONE",
+        owner="mentor", evidence="the code and the gate run",
+        title="5/5/5/5 initial set, and a single-level drill shape G11 cannot touch",
+        why=("The owner's second ask, and it needed two measurements. (a) A 20-item "
+             "lesson shape exists and closes at 5/5/5/5 (LESSON_20_SHAPE). (b) A "
+             "single-level drill shape exists per level (LEVEL_DRILL_SHAPES) and "
+             "carries `level_filtered`, because MEASURED: `_enforce_mix` returns "
+             "early only below 8 items, so twenty single-digit items at one level "
+             "were read as a PAPER and **2 of 20 kept** -- 18 dropped for "
+             "'foundation over quota'. That is D12 reaching the learner through "
+             "'give me more at this level'. With the shape, 20 of 20."),
+        acceptance=("LESSON_20_SHAPE.quota() == 5/5/5/5; a level_filtered shape is "
+                    "never mix-enforced; a non-filtered 20-item single-level set IS"),
+        falsifying_input=("20 items all at FOUNDATION with 20 distinct derivations: "
+                          "2 kept without the shape, 20 with it"),
+        source="owner 2026-10-02; measured",
+    ),
+    Task(
+        id="TASK-061", type="task", epic="LESSON-LOOP", priority="P1", status="DONE",
+        owner="code-reviewer", evidence="the source and the predicate",
+        title="single_digit answers as a DERIVED predicate, not a stored flag",
+        why=("'Give me more, answers 1-9 only' needs the rule to be checkable. "
+             "MEASURED 2026-10-02: `answer_is_single_digit` is computed from the "
+             "item's KEY every time, because a stored `single_digit: bool` would be "
+             "a claim the code never re-derived -- and this project's thesis is "
+             "that a claim code did not compute is not evidence. It is also what "
+             "makes unlimited extra items POSSIBLE without padding: the answer space "
+             "is bounded to 9 values, so the variety must come from the reasoning, "
+             "which G6 already enforces."),
+        acceptance=("the predicate rejects 0, 10, -3, 7.5, 'Rs 7' and ''; "
+                    "`single_digit_items` filters on the KEY, not the options"),
+        falsifying_input=("parametrised over the rejected values -- each one fails "
+                          "the predicate"),
+        source="owner 2026-10-02",
+    ),
+    Task(
         id="TASK-010", type="story", epic="LESSON-LOOP", priority="P1",
         status="TODO", owner="viewer", evidence="a rendered paper, sat as a learner",
         title="Per-level choice: finish / next level / MORE AT THIS LEVEL",
@@ -181,8 +217,10 @@ TASKS: tuple[Task, ...] = (
              "actually makes when a rung felt easy. D26 already says the level is the "
              "learner's; the UI does not offer it."),
         acceptance=("after each rung the page offers three routes: finish the lesson, "
-                    "take the next rung, or request N more items AT THIS RUNG. More "
-                    "requires a level-filtered block to exist (TASK-014)."),
+                    "take the next rung, or request N more items AT THIS RUNG. The "
+                    "route is now unblocked by a shape (TASK-060) and a predicate "
+                    "(TASK-061); what is still missing is CONTENT -- 20 hand-authored "
+                    "distinct items per subtopic."),
         falsifying_input=("pick a rung, choose 'more', and confirm the new items are "
                           "the SAME level -- not a reshuffle of the four"),
         # MEASURED 2026-10-02: I wrote this as `blocks=TASK-014`, which reads as "010
@@ -236,15 +274,17 @@ TASKS: tuple[Task, ...] = (
     ),
     Task(
         id="TASK-014", type="task", epic="LESSON-LOOP", priority="P1",
-        status="BLOCKED", owner="mentor", evidence="the coverage ledger",
+        status="TODO", owner="mentor", evidence="the coverage ledger",
         title="20-item LEVEL-FILTERED blocks",
         why=("What 'more at this level' actually draws from. G11 must NEVER be handed "
              "a single-level drill: it would refuse items for 'under quota (0/5)', "
              "the D12 defect that deleted Lesson 1's hard rung."),
-        acceptance="a block builds and is servable; G11 does not run on it.",
+        acceptance=("a block builds and is servable; G11 does not run on it -- the "
+                    "SHAPE now guarantees that (TASK-060), so this task is CONTENT: "
+                    "20 hand-authored, reasoning-distinct items per subtopic."),
         falsifying_input=("run the drill through G11 and watch it refuse valid items "
                           "-- that is the defect, not a pass"),
-        blocked_by="TASK-015",   # blocks need traps before they can exist
+        blocked_by="TASK-015, TASK-051",
         source="D26",
     ),
     Task(
@@ -282,7 +322,8 @@ TASKS: tuple[Task, ...] = (
         status="BLOCKED", owner="question-setter", evidence="the syllabus",
         title="Data Interpretation content",
         why=("The largest block and the biggest hole: 6.71 q/yr, 24% of the section, "
-             "zero lessons. Reachable only after TASK-013 and TASK-016."),
+             "zero lessons. Reachable only after TASK-013 (prerequisites), TASK-015 "
+             "(traps) and TASK-016 (shared stimuli)."),
         acceptance="4 rungs, keys re-derived, 4/4 shapes, step-by-step that teaches.",
         falsifying_input="plant a wrong key and confirm G5 REFUSES it",
         blocked_by="TASK-016, TASK-013",

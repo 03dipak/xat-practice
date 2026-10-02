@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 
 import sympy as sp
 
-from .items import DifficultyReport, Item, Level, derive_level
+from .items import DifficultyReport, Item, Level, PaperShape, derive_level
 from .solver import SOLVER, Check
 from .syllabus import Stratum
 
@@ -152,7 +152,7 @@ def _value_visible_in_label(label: str, value: str) -> bool:
     return True
 
 
-def run(items: Sequence[Item]) -> GateResult:
+def run(items: Sequence[Item], shape: PaperShape | None = None) -> GateResult:
     # `Sequence`, not `list`: this only ever iterates, and a lesson holds its items
     # as a tuple. Declaring `list` forced the CLI to copy every lesson just to
     # satisfy the annotation. MEASURED 2026-10-02, two mypy errors from adding the
@@ -318,7 +318,7 @@ def run(items: Sequence[Item]) -> GateResult:
         if not blocked:
             res.admitted.append(it)
 
-    res.admitted = _enforce_mix(res, items)
+    res.admitted = _enforce_mix(res, items, shape)
     # Both paper-level gates run before `admitted` is cleared, so one defect does
     # not hide the other. MEASURED: G15 cleared the list and G17 was left with
     # nothing to judge, which made it unreachable -- an unreachable gate is a
@@ -419,7 +419,8 @@ def _refuse_predictable_keys(res: GateResult, items: list[Item]) -> None:
 MIX_ENFORCEMENT_FLOOR = 8
 
 
-def _enforce_mix(res: GateResult, items: Sequence[Item]) -> list[Item]:
+def _enforce_mix(res: GateResult, items: Sequence[Item],
+                 shape: PaperShape | None = None) -> list[Item]:
     """Drop the OVER-quota items, keeping the lower tiers.
 
     `D3`: a paper that cannot fill its quota is SHORT, never padded. And when
@@ -428,6 +429,20 @@ def _enforce_mix(res: GateResult, items: Sequence[Item]) -> list[Item]:
     already contains enough easy items to send that message.
     """
     from .items import LEVEL_ORDER
+
+    # A LEVEL-FILTERED DRILL HAS NO MIX TO ENFORCE.
+    #
+    # MEASURED 2026-10-02: the early return below is `len(items) <
+    # MIX_ENFORCEMENT_FLOOR` (8), which protected a five-item drill by accident.
+    # But the owner's "give me twenty more at this level" is ABOVE the floor, so G11
+    # would have dropped fifteen of them for "foundation over quota (1/1)" -- the
+    # D12 defect, which once deleted the hard rung from Lesson 1, reaching the
+    # learner through the back door.
+    #
+    # So the SHAPE decides, not the length. A shape with `level_filtered` set is a
+    # drill and the mix does not apply to it; anything else is treated as a paper.
+    if shape is not None and shape.level_filtered:
+        return res.admitted
 
     if len(items) < MIX_ENFORCEMENT_FLOOR:
         return res.admitted

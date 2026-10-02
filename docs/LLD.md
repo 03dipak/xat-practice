@@ -391,3 +391,64 @@ agents and three outside — reached the same architecture/content split
 independently, and both outside reviews rated the **exam model** as the weak half.
 
 That was accurate, and §1 fixed it.
+
+---
+
+## 12. Two shapes the owner asked for (2026-10-02)
+
+### 12.1 "Five at each level to begin with" — 5/5/5/5
+
+`LESSON_20_SHAPE`: twenty questions, uniform mix, so `quota()` closes at
+**5 / 5 / 5 / 5**. It is *additive* — `LESSON_SHAPE` stays at four items, so an
+existing lesson does not silently become twenty.
+
+**MEASURED, and it is not free:** cloning Lesson 1's items to five per level and
+running the gates admitted **4 of 20**. `G6_stem_distinctness` refused sixteen:
+
+> same reasoning shape, only the numbers differ, so this counts one question twice
+
+`G6` is **right**. Five questions at a level means five genuinely different
+**reasonings**, not five number swaps. That is a content cost, not a bug to route
+around, and it is the honest price of the feature.
+
+### 12.2 "Give me more at this level, single-digit answers"
+
+Two pieces, and both are already in the code.
+
+| | what | why it is shaped that way |
+|---|---|---|
+| `LEVEL_DRILL_SHAPES` | one shape per level, `level_filtered=True` | a drill has no mix to enforce |
+| `answer_is_single_digit` | a **derived predicate** on the key | a stored flag would be a claim the code never computed |
+
+**MEASURED, and this is the trap.** `_enforce_mix` returns early only below
+`MIX_ENFORCEMENT_FLOOR` (8), which protected a five-item drill **by accident**. The
+owner's request is *twenty* items at one level — above the floor — so `G11` read
+them as a paper and kept **2 of 20**, dropping eighteen for *"foundation over quota
+(1/1)"*.
+
+That is **D12 verbatim**: a paper rule handed a non-paper, which once deleted the
+hard rung from Lesson 1, reaching the learner through a different door. So the
+**shape** decides, not the length:
+
+| | kept |
+|---|---|
+| 20 items at FOUNDATION, no shape | **2 of 20** |
+| the same 20, `LEVEL_DRILL_SHAPES[FOUNDATION]` | **20 of 20** |
+| the same 20, `LESSON_20_SHAPE` (a lesson, not a drill) | still mix-enforced |
+
+**Why single-digit answers are the right constraint.** Bounding the answer space
+to nine values is what makes unlimited extra items possible **without padding**:
+the variety has to come from the reasoning, which `G6` already enforces, rather
+than from the numbers, which `G6` already forbids.
+
+### 12.3 What is still missing — content, not structure
+
+The shapes and the predicate exist and are falsified. What does **not** exist is
+the material:
+
+- **20 hand-authored, reasoning-distinct items per subtopic** (TASK-014, blocked by
+  TASK-015 traps and TASK-051's `G17` ruling).
+- **A generator** that produces more single-digit items on demand. Nothing writes
+  items; every item to date is hand-authored with its keys re-derived.
+- **The UI route** (TASK-010), which should be built *after* the content, because
+  until then "give me more" can only produce an empty drill.
