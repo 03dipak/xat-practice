@@ -33,6 +33,7 @@ from pathlib import Path
 from . import lesson1
 from .gates import run
 from .items import Item
+from .lesson1 import TEACH
 
 OUT_DIR = Path(__file__).resolve().parent.parent.parent / "out" / "lesson-01"
 
@@ -97,6 +98,21 @@ STYLE = """\
        2. a rejected fetch renders the REASON, including the file:// case,
           instead of a blank page.
      `.pending` and `.bad` exist only to make those two states visible. */
+  /* THE TEACHING CARD (D18). Sits above the first question. Deliberately plain:
+     it is reference material a beginner scans, not a headline. */
+  .teach { background: #fbfcfd; border: 1px solid var(--line); }
+  .teach h2 { font-size: 18px; margin: 0 0 10px; }
+  .teach .formula {
+    font-size: 22px; font-weight: 700; letter-spacing: .02em;
+    padding: 12px 14px; margin: 4px 0 14px; background: #eef1f4;
+    border-radius: 8px; text-align: center;
+  }
+  .teach dl { margin: 0 0 14px; }
+  .teach dt { font-weight: 700; margin-top: 10px; }
+  .teach dd { margin: 2px 0 0 0; color: var(--muted); }
+  .teach .unit { border-left: 3px solid var(--key); padding-left: 12px; }
+  .teach .ex { background: #eef6f1; border-radius: 8px; padding: 12px 14px; }
+  .teach button { margin-top: 4px; }
   .pending { color: var(--muted); font-size: 15px; }
   .bad { border-color: var(--bad); }
   .bad h2 { font-size: 17px; margin: 0 0 8px; color: var(--bad); }
@@ -189,7 +205,8 @@ const LABEL = {
   'L1-F': 'FOUNDATION', 'L1-E': 'EASY',
   'L1-M': 'MEDIUM',   'L1-H': 'HARD',
 };
-const state = { i: 0, commit: null, pick: null, meta: null, build: null, log: [] };
+const state = { i: 0, commit: null, pick: null, meta: null, build: null,
+                teach: {}, log: [] };
 let paperCache = null;
 
 // paper.json holds ONLY what the learner is allowed to see: the stem, the
@@ -209,6 +226,7 @@ async function loadPaper(id) {
   }
   const all = await paperCache;
   state.build = all.build || 'unknown';
+  state.teach = all.teach || {};
   return all.items.find(i => i.id === id);
 }
 
@@ -258,6 +276,30 @@ function fail(stage, id, err) {
     </div>`;
 }
 
+// D18 TEACH THEN ASK. Shown before question 1 only (OWNER DECISION, 2026-10-02:
+// once per lesson, not once per subtopic -- revisit if a learner says it repeats).
+//
+// It is built from paper.json, which is the file the page already loads, so it
+// costs no extra request and it cannot touch the key: the key is not in this file
+// and is not fetched until check().
+function teachCard(t) {
+  if (!t || !t.formula) return '';
+  const legend = (t.legend || []).map(
+    ([k, name, mean]) => `<dt>${esc(k)} &mdash; ${esc(name)}</dt><dd>${esc(mean)}</dd>`
+  ).join('');
+  return `<div class="card teach">
+    <h2>${esc(t.heading)}</h2>
+    <p>${esc(t.why)}</p>
+    <div class="formula">${esc(t.formula)}</div>
+    <dl>${legend}</dl>
+    <p class="unit"><strong>Units.</strong> ${esc(t.units)}</p>
+    <p>${esc(t.why_divide)}</p>
+    <p class="ex"><strong>Worked example.</strong> ${esc(t.example)}</p>
+    <p>${esc(t.bridge)}</p>
+    <button id="startQ">I have read this &mdash; show me question 1</button>
+  </div>`;
+}
+
 async function render() {
   rungBar();
   const id = ORDER[state.i];
@@ -266,10 +308,12 @@ async function render() {
   // PAINTED FIRST, FETCHED SECOND. This assignment happens before any await, so
   // the first screen is never empty and never mistaken for a broken page.
   stage.innerHTML = `
+    <div id="teachSlot"></div>
     <div class="card">
       <div class="qno">${LABEL[id]} &middot; question ${state.i + 1} of 4</div>
       <div class="stem pending">Loading the question&hellip;</div>
     </div>`;
+
 
   let meta;
   try {
@@ -292,6 +336,7 @@ async function render() {
     + 'of these four questions.';
 
   stage.innerHTML = `
+    <div id="teachSlot"></div>
     <div class="card">
       <div class="qno">${LABEL[id]} &middot; question ${state.i + 1} of 4</div>
       <div class="stem">${esc(meta.stem)}</div>
@@ -314,6 +359,20 @@ async function render() {
 
       <div id="result" class="hidden"></div>
     </div>`;
+
+  // The teaching card, on question 1 only. It is NOT on later rungs: the point is
+  // to read it once before the ladder starts, and repeating it four times is the
+  // "revisit this if a learner says it repeats" case, not the default.
+  const slot = document.getElementById('teachSlot');
+  if (slot) {
+    if (state.i === 0) {
+      slot.innerHTML = teachCard(state.teach);
+      const b = document.getElementById('startQ');
+      if (b) b.onclick = () => { slot.innerHTML = ''; };
+    } else {
+      slot.innerHTML = '';
+    }
+  }
 
   document.querySelectorAll('[data-conf]').forEach(b => b.onclick = () => {
     state.commit = b.dataset.conf;
@@ -490,6 +549,12 @@ def build_lesson(lesson_id: str, items: tuple[Item, ...],
     paper: dict[str, object] = {
         "lesson_id": lesson_id,
         "subtopic": items[0].subtopic_id,
+        # D18: TEACH THEN ASK. MEASURED 2026-10-02 by `viewer`: the formula first
+        # reached the screen only AFTER question 1 was answered, so a learner who
+        # did not know the formula could not learn it here. This block is rendered
+        # BEFORE the first question, so it belongs in the PAPER -- the file the
+        # page loads on load. It is not in answerkey.json, and it must never be.
+        "teach": dict(TEACH.get(items[0].subtopic_id, {})),
         "shaping": "LESSON",
         "negative_marking": False,
         "items": [

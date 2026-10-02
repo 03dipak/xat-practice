@@ -145,6 +145,54 @@ function report(done) {
     // being a mystery. MEASURED: the owner reported the options were invisible
     // while the served page was provably correct, and nothing on the page could
     // distinguish the two.
+    // D18 TEACH THEN ASK. The card must be on screen BEFORE the stem, it must
+    // teach the four things a beginner lacks, and -- the one that matters most --
+    // it must NOT hand over question 1's key.
+    //
+    // MEASURED 2026-10-02: `viewer` found the formula only reached the screen
+    // AFTER question 1 was answered, so a learner who did not know the formula
+    // could not learn it here. And the trap in fixing it: the only worked example
+    // in the file was Q1 verbatim, which would hand over the key before the
+    // commit.
+    const teach = q('.teach');
+    record('the-teaching-card-renders-before-question-1', teach !== null,
+      teach ? 'heading: ' + norm(q('.teach h2').textContent) : 'no .teach element');
+    if (teach) {
+      const t = norm(teach.textContent);
+      record('the-teach-card-is-above-the-question',
+        teach.compareDocumentPosition(q('.card:not(.teach)')) &
+        Node.DOCUMENT_POSITION_FOLLOWING ? true : false,
+        'teach card precedes the question card');
+      record('the-teach-card-gives-the-formula', /P\s*x\s*R\s*x\s*T\s*\/\s*100/.test(t),
+        'formula present');
+      record('the-teach-card-defines-every-symbol',
+        ['Principal', 'Rate per annum', 'Time'].every((w) => t.indexOf(w) !== -1),
+        'P, R and T all defined in words');
+      record('the-teach-card-states-the-units-rule',
+        /per year/i.test(t) && /year/i.test(t), 'units rule present');
+      record('the-teach-card-has-a-worked-example', /Worked example/i.test(t),
+        'example present');
+      // THE KEY MUST NOT BE ON SCREEN, and the check must be exact.
+      //
+      // MEASURED: the first version of this check looked for the substring "200"
+      // and failed, because "2000" CONTAINS "200". A leak check that fires on the
+      // worked example's own numbers is worse than none -- an author would fix
+      // the teaching to satisfy it. So it looks for Q1's KEY TEXT and for Q1's
+      // PRINCIPAL, both of which are specific to question 1.
+      record('the-teach-card-does-not-leak-questions-key',
+        t.indexOf('Rs 200') === -1,
+        t.indexOf('Rs 200') !== -1 ? 'the card states Q1\'s answer'
+                                    : 'Q1 key text absent');
+      record('the-teach-card-does-not-reuse-questions-numbers',
+        t.indexOf('1,000') === -1 && t.indexOf('1000') === -1,
+        t.indexOf('1,000') !== -1 || t.indexOf('1000') !== -1
+          ? 'the card uses Q1\'s principal, so it hands over Q1\'s answer'
+          : 'Q1 principal absent; the example runs on 2,000');
+      record('the-teach-card-uses-different-numbers-from-q1',
+        /2,?000/.test(t) && t.indexOf('Rs 200') === -1,
+        'example runs on 2,000 at 5% for 4 years, not 1,000 at 10% for 2');
+    }
+
     const footText = norm(q('#foot').textContent);
     const m = footText.match(/Build ([0-9a-f]{8})/);
     record('the-page-states-which-build-it-is', !!m, m ? 'build ' + m[1] : footText.slice(0, 60));

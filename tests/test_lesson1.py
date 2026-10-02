@@ -7,6 +7,7 @@ distractor named, and the ladder reachable from the bottom rung.
 
 from __future__ import annotations
 
+import json
 from fractions import Fraction
 
 import pytest
@@ -498,3 +499,97 @@ def test_each_rung_has_its_own_derivation_shape():
         f"The hard rung must add an OPERATION, not a label: "
         f"{dict(zip((it.id for it in L.LESSON), shapes, strict=True))}"
     )
+
+
+# ---------------------------------------------------------------------------
+# D18 -- the teaching, shown before the first question
+# ---------------------------------------------------------------------------
+# MEASURED 2026-10-02 by `viewer`: the formula first reached the screen only
+# AFTER question 1 was answered, so a learner who did not know what simple
+# interest IS could not learn it from this lesson. For a zero-to-pro goal that is
+# the product failing at step one. The owner chose TEACH THEN ASK.
+
+def test_the_lesson_carries_teaching_for_its_subtopic():
+    from xat_practice.bundle import TEACH
+
+    assert L.SUBTOPIC in TEACH, (
+        f"no teaching block for {L.SUBTOPIC}. The step-by-step renders only "
+        "inside check(), so without this a beginner cannot learn the topic here."
+    )
+    t = TEACH[L.SUBTOPIC]
+    for field in ("heading", "why", "formula", "legend", "why_divide", "units",
+                  "example", "bridge"):
+        assert t.get(field), f"the teaching block is missing {field!r}"
+
+
+def test_the_teaching_defines_every_symbol_it_uses():
+    """MEASURED missing entirely before D18: nothing in the bundle said what
+    'principal' MEANS. A formula with undefined symbols is not an explanation."""
+    from xat_practice.bundle import TEACH
+
+    t = TEACH[L.SUBTOPIC]
+    assert len(t["legend"]) == 3
+    for letter, _name, meaning in t["legend"]:
+        assert letter in t["formula"], f"{letter} is defined but never used"
+        assert meaning.strip(), f"{letter} has no meaning given"
+        assert len(meaning.split()) >= 5, (
+            f"{letter} = {meaning!r} is too short to teach anything"
+        )
+
+
+def test_the_teaching_states_the_units_rule():
+    """MEASURED missing before D18. Without it a monthly rate can be dropped in
+    as an annual one and nothing on the page says that is illegal."""
+    from xat_practice.bundle import TEACH
+
+    units = TEACH[L.SUBTOPIC]["units"].lower()
+    assert "per year" in units
+    assert "month" in units, (
+        "the units rule must say what to do when the rate is not annual, or it "
+        "only states half of itself"
+    )
+
+
+def test_the_teaching_example_does_not_hand_over_question_ones_key():
+    """THE TRAP IN FIXING THIS, and the reason this test exists.
+
+    MEASURED: the only worked example in the file was question 1 verbatim --
+    1,000 at 10% for 2 years giving 200. Reusing it as the teaching example hands
+    over Q1's answer BEFORE the commit and destroys Q1 as a check, while every
+    gate passes, because no gate knows what a beginner has been told.
+
+    So the example must run on different numbers, and it must check its own
+    arithmetic."""
+    import re
+
+    from xat_practice.bundle import TEACH
+
+    example = TEACH[L.SUBTOPIC]["example"]
+    stem = L.LESSON[0].stem
+    for forbidden in ("1,000", "1000", "10%"):
+        assert forbidden not in example, (
+            f"the teaching example uses {forbidden!r}, which is in question 1's "
+            f"own stem ({stem!r}). A learner who follows the example has already "
+            f"answered question 1 before the options appear."
+        )
+    nums = [int(n.replace(",", "")) for n in re.findall(r"[0-9][0-9,]*", example)]
+    assert 2000 in nums and 400 in nums, (
+        f"the example must be 2,000 at 5% for 4 years -> 400, found {nums}"
+    )
+    assert 2000 * 5 * 4 // 100 == 400, "the example's own arithmetic is wrong"
+
+
+def test_the_teaching_is_in_the_paper_and_never_in_the_key():
+    """It is shown BEFORE the commit, so putting it behind the commit barrier
+    would mean it never appears until it is too late to help -- and putting it in
+    `answerkey.json` would ship the teaching with the answers."""
+    from xat_practice import bundle
+
+    files = bundle.build_lesson(L.LESSON_ID, L.LESSON, L.SOLUTIONS)
+    assert files["paper.json"]["teach"], "paper.json carries no teaching"
+    assert "teach" not in files["answerkey.json"], (
+        "the teaching is behind the commit barrier, so it will not be seen until "
+        "after the learner has answered"
+    )
+    blob = json.dumps(files["paper.json"])
+    assert "ANSWER:" not in blob, "paper.json must not carry the answers"

@@ -1071,3 +1071,60 @@ Adding G17 to `GATE_IDS` used a blanket string replace, which also hit the three
 does_not_produce` failed on it immediately. A blanket replace across a file that
 contains the string being replaced is the hazard; the test that asserts a refusal's
 *detail text* is what caught it.
+
+---
+
+## 10. D18 built — the teaching, before the first question
+
+`viewer` measured what was missing for a learner who does not know the topic:
+
+| need | before | after |
+|---|---|---|
+| the formula | only *after* answering | **before the first question** |
+| what each **symbol means** | **absent entirely** | P, R and T defined in words |
+| one worked example | gated behind Q1 | before Q1, on different numbers |
+| the **units rule** | **absent** | R per year, T in years, months converted |
+
+The card is built from **`paper.json`**, not `answerkey.json`. It has to be seen
+*before* the commit, so putting it behind the commit barrier would mean it never
+appears until it is too late — and putting it with the answers would ship the
+teaching to anyone reading the network tab. `paper.json` is already fetched on
+load, so the card costs **no extra request**.
+
+**Owner decision: once per lesson, not once per subtopic.** It renders on question
+1 and not on rungs 2–4. If a learner says it repeats too much, that is a revisit,
+not the default.
+
+### The trap, and it is why four of these tests exist
+
+MEASURED: the only worked example in the file was **question 1 verbatim** —
+1,000 at 10% for 2 years → 200. Reusing it as the teaching example **hands over
+Q1's key before the commit and destroys Q1 as a check**, and every gate passes,
+because no gate knows what a beginner has already been told.
+
+So the example runs on **2,000 at 5% for 4 years → 400**: it tests *transfer*
+rather than recall. `test_the_teaching_example_does_not_hand_over_question_ones_key`
+refuses it if the numbers ever converge, and checks the example's own arithmetic.
+
+### A leak check that had to be made exact
+
+The first browser check looked for the substring `"200"` in the card and **failed
+— because `"2000"` contains `"200"`.** A leak check that fires on the worked
+example's own numbers is worse than no leak check: an author would "fix" the
+teaching to satisfy it. It now looks for Q1's **key text** and Q1's **principal**,
+both specific to question 1.
+
+### Two bugs the browser found, and one the pixels found
+
+1. The card was built *before* the final `stage.innerHTML` assignment and therefore
+   **wiped a moment later**. The DOM check caught it only after the first slot was
+   moved into the final template — two wrong placements in a row, both invisible
+   to reading.
+2. `#teachSlot` was added to the *loading shell*, which the real template replaces.
+3. **Only the screenshot found this:** the card prefixes `Units.` and
+   `Worked example.` in bold, and the text then repeated the same words — "Units.
+   THE UNITS RULE…", "Worked example. Worked example…". Every DOM assertion passed;
+   the duplication was only legible on the rendered card.
+
+**47 UI checks**, nine of them on the teaching, including that it renders *above*
+the question, and that it does not leak the key.

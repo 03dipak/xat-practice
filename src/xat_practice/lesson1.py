@@ -347,6 +347,76 @@ HARD = Item(
     calculator_minutes=1.6,
 )
 
+
+# ---------------------------------------------------------------------------
+# D18 -- THE TEACHING, shown before the first question.
+# ---------------------------------------------------------------------------
+# The owner's flow was "question, options, answer, explanation". `viewer` found
+# the cost of that ordering: the step-by-step renders only inside `check()`, so
+# the formula first reached the screen AFTER question 1 was answered. A learner
+# who does not know what simple interest IS cannot learn it from this lesson. For
+# a "zero to pro" goal that is the whole product failing at step one.
+#
+# The owner chose TEACH THEN ASK. So this block is rendered first, and it needs
+# four things a beginner does not have (MEASURED missing 3 of the 4):
+#
+#   1. the formula
+#   2. what each SYMBOL MEANS  -- was absent entirely; nothing said principal is
+#      "the money you start with"
+#   3. one worked example
+#   4. the UNITS rule           -- was absent, so a monthly rate can be dropped in
+#      as annual and nothing on the page says that is illegal
+#
+# THE EXAMPLE MUST NOT REUSE QUESTION 1's NUMBERS. MEASURED, and this is the trap:
+# the only worked example in the file was question 1 verbatim (1,000 at 10% for 2
+# years -> 200). Reusing it hands over Q1's key BEFORE the commit and destroys Q1
+# as a check. This one runs on 2,000 at 5% for 4 years -> 400, so it tests
+# TRANSFER rather than recall, and `test_the_teaching_example_does_not_hand_over_
+# question_ones_key` refuses it if the numbers ever converge.
+#
+# It lives in `paper.json`, not `answerkey.json`: it is shown before the learner
+# commits, so putting it behind the commit barrier would mean it never appears
+# until it is too late to help.
+
+TEACH: dict[str, dict[str, object]] = {
+    SUBTOPIC: {
+        "heading": "Before you start: what simple interest is",
+        "why": (
+            "Lending or borrowing money has a cost, and this is the cost of "
+            "borrowing. Simple interest charges you only on the ORIGINAL amount, "
+            "every year, for as long as you keep it."
+        ),
+        "formula": "SI = P x R x T / 100",
+        "legend": [
+            ("P", "Principal", "the amount you start with. It never changes."),
+            ("R", "Rate per annum", "the yearly rate, written as a number. 10% "
+             "means you write 10."),
+            ("T", "Time", "the number of YEARS. 2 means two years."),
+        ],
+        "why_divide": (
+            "Why divide by 100? Because a rate of 10% means TEN IN EVERY HUNDRED. "
+            "Writing 10 into the formula without dividing by 100 overstates "
+            "everything by a factor of 100."
+        ),
+        "units": (
+            "This is where marks are lost. R must be a rate "
+            "PER YEAR and T must be in YEARS. If you are given a monthly rate, "
+            "multiply it by 12 first. If you are given the time in months, divide "
+            "it by 12. Never mix the two."
+        ),
+        "example": (
+            "On DIFFERENT numbers from the questions below, so it tests transfer "
+            "rather than recall. Rs 2,000 at 5% per annum for 4 years: "
+            "SI = 2000 x 5 x 4 / 100 = 400. So the interest is Rs 400."
+        ),
+        "bridge": (
+            "One extra step appears in the questions below: if the question asks "
+            "for the AMOUNT rather than the interest, add the principal back. "
+            "Amount = P + SI."
+        ),
+    },
+}
+
 LESSON = (FOUNDATION, EASY, MEDIUM, HARD)
 
 #: The step-by-step shown after a learner commits. Written as data so the
