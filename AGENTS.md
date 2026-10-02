@@ -356,4 +356,24 @@ command then reports whatever `.coverage` is on disk — possibly hours stale �
 a fresh measurement. A floor reading stale data is **worse** than no floor,
 because it looks like a measurement. That defect is the reference project's F1
 and it was quoted as current by two separate sessions. Do not remove `--cov` to
-speed the suite up.
+speed the suite up.- **Navigation is a PAGE, not a prompt. MEASURED 2026-10-02, twice, in opposite
+  directions.** `serve` first opened the FIRST registered lesson (so asking for
+  Geometry got Simple Interest, safe by being invisible), then asked in the
+  terminal. The owner rejected both: *"I don't wanna invest the time in running
+  commands."* Now `serve` binds `out/` as the ROOT, prints ONE url, and reads
+  nothing from stdin: `/` is the navigator, each lesson is at `/<lesson_id>/`, and
+  the sibling `fetch('paper.json')` still resolves — one origin, no CORS. **This
+  is also why "one lesson per port" stopped being right**: switching subtopic in
+  the UI needs one server. `render_menu`/`choose`/`pick` were deleted, not kept —
+  the prompt had one caller and it is gone.
+- **The four levels are TABS, not a progress bar, and `render()` owns the
+  per-item commit reset.** MEASURED: the rungs were `<div>`s — a read-out of a
+  fixed queue. Two failures found while testing the fix, both worth keeping:
+  a carried-over `state.commit` is **invisible in the DOM** (render() rebuilds a
+  fresh `disabled` reveal and an empty note), so three browser checks passed at
+  54/54 with the reset *deleted* — twice; and it bites in `check()`, which reads
+  `state.commit` to pick the verdict quadrant, so a stale `'sure'` makes the page
+  claim *"Sure and WRONG"* on a rung the learner never committed to. The fix is
+  therefore **structural**: `render()` clears `state.commit`/`state.pick` itself,
+  so no caller can get it wrong, and the text-level pin is in `test_bundle.py`
+  rather than pretending a DOM check can see it.

@@ -196,77 +196,55 @@ form you chose.
 
 ## Run it
 
-### Sit a lesson in the browser — one command
+### Sit a lesson in the browser — one command, then click
 
 ```bash
 uv run xat-practice serve
 ```
 
-That is the whole thing. It asks what you want to work on and serves it:
+It starts immediately. **No prompt, no second command.** It prints one URL:
 
 ```
-========================================================================
-XAT PRACTICE -- what do you want to work on?
-========================================================================
-XAT 2026 -- 95 questions, Part 1 is 75 questions in 170 minutes with NO sectional time limit.
-  QA&DI 28   VA&LR 26   DM 21
-  Part 2 GK 20 in 10 minutes -- EXCLUDED from the percentile by XLRI, so it is out of scope here.
-  5 options, +1 correct, -0.25 wrong, and -0.10 per blank after the first 8.
-
-  QA&DI -- the only section this project trains, and
-  the only one with lessons written. VA&LR and DM are in the
-  paper above and are not built here; that is the honest state.
-
-   1. Geometry & Mensuration   similarity-and-area-ratios
-   2. Profit, Loss & Interest  simple-interest
-
-   2 of 40 subtopics written. Run `uv run xat-practice coverage` for the full ledger.
-   0. quit
-
-  choose (or 0 to quit): 1
-  serving Geometry & Mensuration -- similarity-and-area-ratios
-serving lesson-02-geometry-similarity at http://127.0.0.1:8000/  (ctrl-c to stop)
+XAT Practice is up at  http://127.0.0.1:8000/
+  that page lists the sections; pick one there. (ctrl-c to stop)
 ```
 
-**Why a prompt rather than a default.** MEASURED 2026-10-02: `serve` with no
-argument opened the *first* registered lesson, so anyone who wanted Geometry typed
-the documented command and got Simple Interest, with nothing anywhere saying a
-choice existed. The default was safe by being invisible. **A default that hides
-the choice is worse than a prompt.**
+**The navigation is a web page, not a terminal menu.** It was one, and it was
+rejected: *"I don't wanna invest the time in running commands."* MEASURED
+2026-10-02, this shape went wrong twice —
 
-The menu lists every written lesson in **measured topic-weight order** (DI 6.71
-q/yr would lead; Geometry 4.57 is next), states the unwritten count rather than
-hiding it, and every figure in it is read from `syllabus.PAPER_SHAPE` — so the menu
-cannot quote a spec the code does not hold.
+1. `serve` with no argument opened the **first** registered lesson, so anyone who
+   wanted Geometry typed the documented command and got Simple Interest, with
+   nothing saying a choice existed. Safe by being invisible.
+2. The fix was to **ask in the terminal**. Also rejected.
 
-Non-interactive stdin (CI, a pipe) prints the menu and exits rather than hanging.
+So the choice lives in the page, and `serve` serves the whole `out/` tree so that
+**one URL reaches every lesson**: `/` is the navigator (section → topic), and each
+lesson is at `/<lesson_id>/`, where its sibling `fetch('paper.json')` still
+resolves. One origin, no CORS, and switching subtopic needs no restart — which is
+also why "one lesson per port" stopped being the right shape.
 
-Prefer to skip the menu: `uv run xat-practice serve --lesson <lesson_id>`.
+Inside a lesson the four levels are **clickable tabs**. You can take them in any
+order, and jumping clears the previous rung's commitment, so the verdict can never
+report *"Sure and WRONG"* on a question you did not commit to.
+
+Prefer to skip the navigator: `uv run xat-practice serve --lesson <lesson_id>`.
 
 ### Two different things called "a mix"
-
-The level mix is **not** one decision, and conflating them is the trap:
 
 | what is being produced | mix | why |
 |---|---|---|
 | a **mock** / full paper | `LEVEL_MIX` 10/25/40/25 → **2/5/8/5** at n=20 | derived from the exam's own timing: 136 s/question across 170 minutes, so the top of the paper is not meant to be 25% hard |
 | a **drill** at a level the learner chose | level-filtered — the learner's choice | "I want foundation" is not a request for a mix |
 
-So the level is the learner's, and **the mix is applied only where a paper is being
-simulated**. `G11` enforces the paper mix and must not be handed a level-filtered
-drill: a paper rule given a non-paper is the defect behind D12 and D23, and it is
-how a hard rung once got deleted from Lesson 1.
+`G11` enforces the paper mix and must not be handed a level-filtered drill: a paper
+rule given a non-paper is the defect behind D12 and D23, and it is how a hard rung
+once got deleted from Lesson 1. See D26.
 
-`serve` binds **loopback only** and serves one directory, so each lesson has its
-own port — which is why the menu asks first instead of serving all of them.
-
-It exists because browsers block `fetch()` of a sibling JSON on `file://`.
-
-**MEASURED 2026-10-02, and this is why the second command is mandatory:** opened
-as a `file://` path, `out/lesson-01-simple-interest/index.html` renders **"The
-question could not be loaded"** — confirmed by rendering it in headless Chromium.
-Nothing is broken; `file://` cannot fetch `paper.json`, and that is the commit
-barrier working. But with no URL to visit it reads as a dead build. Ctrl-C to stop.
+**`file://` will not work.** MEASURED 2026-10-02: opening
+`out/lesson-01-simple-interest/index.html` directly renders **"The question could
+not be loaded"**, because `file://` blocks `fetch()` of a sibling JSON. That is the
+commit barrier working — but it means `serve` is mandatory.
 
 ### The verbs
 

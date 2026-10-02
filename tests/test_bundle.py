@@ -669,3 +669,77 @@ def test_options_set_their_own_colour_and_do_not_inherit_white():
         "options were invisible and 38 UI checks passed."
     )
     assert "background: #fff" in body, "the fix assumes a white option background"
+
+
+def test_render_owns_the_per_item_commit_reset(on_disk):
+    """A TEXT assertion, and labelled as one -- `render()` must clear the
+    per-item state itself, not every caller.
+
+    MEASURED 2026-10-02: `state.commit` and `state.pick` were cleared by `next()`
+    and by `jumpTo()`, so correctness depended on every future caller remembering.
+    That is the D12 shape: a rule living in the callers instead of in the thing it
+    constrains, and the level tabs were about to become a third caller.
+
+    Why this is static and not a browser check, stated plainly: a carried-over
+    commit is INVISIBLE in the DOM. `render()` rebuilds a fresh
+    `<button id="reveal" disabled>` and an empty `#commitNote`, so every DOM
+    assertion passes with the reset deleted -- measured at 54/54, twice, before this
+    was made structural. Where it bites is `check()`, which reads `state.commit` to
+    choose the verdict quadrant: a stale `'sure'` makes the page tell a learner it
+    was "Sure and WRONG" on a rung they never committed to.
+
+    So the browser proves the jump and the barrier; the reset is proven here, on the
+    text, because that is where it is written.
+    """
+    js = on_disk["lesson.js"]
+
+    def body_of(name: str) -> str:
+        """The source of one top-level function.
+
+        MEASURED while writing this: slicing to the NEXT occurrence of a fixed name
+        returned the EMPTY STRING, because `function esc(` is defined ABOVE
+        `render()`. An empty slice makes every `in` assertion fail for the wrong
+        reason, and the failure reads like a missing reset.
+        """
+        start = js.index(name)
+        rest = js[start + len(name):]
+        ends = [i for i in (rest.find("\nfunction "), rest.find("\nasync function "))
+                if i != -1]
+        return js[start:start + len(name) + (min(ends) if ends else len(rest))]
+
+    body = body_of("async function render()")
+    assert body, "could not isolate render() -- the helper is broken, not the page"
+    assert "state.commit = null" in body, (
+        "render() must clear state.commit itself -- see the docstring for the "
+        "measurement that made this structural"
+    )
+    assert "state.pick = null" in body, (
+        "render() must clear state.pick itself"
+    )
+    # And the reason it is not a caller-only rule: jumpTo must NOT be the thing
+    # that saves us, or the next caller breaks it.
+    jump = body_of("function jumpTo(")
+    assert "state.commit" not in jump, (
+        "jumpTo() clears state.commit again. That is fine but it is not what makes "
+        "it safe -- render() is. Keeping both invites a reader to delete the wrong "
+        "one."
+    )
+
+
+def test_the_levels_are_clickable_tabs_in_the_served_page(on_disk):
+    """The owner asked to "click section, then subtopic, then tabs the 4 level i
+    can choose any". The rungs were `<div>`s -- a read-out of a fixed queue, not a
+    control. Rendered behaviour is pinned by tools/ui_probe.html; this pins the
+    markup so the two cannot drift apart."""
+    js = on_disk["lesson.js"]
+    assert "data-i=" in js, "each rung must carry its index to be clickable"
+    assert "closest('.rung')" in js, "the click must be delegated to the rung"
+    rung_bar = js[js.index("function rungBar()"):js.index("function jumpTo(")]
+    assert "<button" in rung_bar, (
+        "a rung must be a <button>, not a <div>: a div is not focusable and does "
+        "not respond to Enter, so it is a picture of a tab rather than a tab"
+    )
+    assert "aria-current" in rung_bar, (
+        "the active level must be marked for assistive tech and for a learner "
+        "who cannot see which one is lit"
+    )

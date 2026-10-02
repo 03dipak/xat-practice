@@ -90,6 +90,8 @@ const q = (s) => document.querySelector(s);
 const qa = (s) => Array.from(document.querySelectorAll(s));
 const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function waitFor(fn, ms) {
   const t0 = Date.now();
   while (Date.now() - t0 < ms) {
@@ -463,6 +465,77 @@ function report(done) {
     record('advancing-does-not-refetch-the-paper', fetched('paper.json') === paperBefore,
       paperBefore + ' -> ' + fetched('paper.json') + ' paper.json fetches');
     record('question-2-is-the-easy-rung', /EASY/.test(q('.qno').textContent), norm(q('.qno').textContent));
+
+    // ---- 8. the level tabs -------------------------------------------------------
+    //
+    // MEASURED 2026-10-02: the owner asked for "tabs the 4 level i can choose
+    // any", and the rungs were `<div>`s -- a read-out of a fixed queue. Making them
+    // buttons is the easy half. The half that can silently go wrong is the BARRIER:
+    // `state.commit` and `state.pick` are per-item, and a jump that carries them
+    // across would show the HARD rung with the previous rung's "I am sure" already
+    // filled in -- the learner answers a question they never committed to, and the
+    // verdict panel is already showing. So these three are load-bearing, not
+    // decoration.
+    const rungs = qa('.rung');
+    record('the-levels-are-tabs-not-divs',
+      rungs.length === 4 && rungs.every(x => x.tagName === 'BUTTON'),
+      rungs.length + ' rungs, tags ' + rungs.map(x => x.tagName).join(','));
+    const hardTab = rungs.find(x => x.textContent === 'HARD');
+    record('a-hard-tab-exists', !!hardTab,
+      rungs.map(x => x.textContent).join(', '));
+    if (hardTab) {
+      // COMMIT FIRST, OR THE THREE CHECKS BELOW PASS VACUOUSLY. MEASURED
+      // 2026-10-02: deleting `state.commit = null` from jumpTo() left the probe at
+      // 52/52, because nothing had been committed and so nothing could carry over.
+      // A check that has only ever been shown a true statement is untested, and this
+      // one had only ever been shown a null.
+      //
+      // TWO clicks, and the second is easy to miss: saying you are sure only
+      // ENABLES `#reveal`. The options are built when reveal is clicked, which is the
+      // commit barrier doing its job -- the option list is not in the DOM before
+      // then. One `sure` click leaves 0 options and every reset check below passes
+      // for the wrong reason.
+      q('[data-conf="sure"]').click();
+      record('saying-sure-enables-reveal', !q('#reveal').disabled,
+        'reveal disabled: ' + q('#reveal').disabled);
+      q('#reveal').click();
+      await waitFor(() => qa('.opt').length > 0, 6000);
+      record('the-barrier-was-open-before-the-jump',
+        qa('.opt').length > 0 && !q('#result:not(.hidden)'),
+        qa('.opt').length + ' options open, result visible: '
+        + !!q('#result:not(.hidden)'));
+
+      hardTab.click();
+      const jumped = await waitFor(
+        () => q('.qno') && /HARD/.test(q('.qno').textContent), 8000);
+      record('clicking-hard-jumps-to-the-hard-rung', jumped,
+        norm(q('.qno') && q('.qno').textContent));
+      // The barrier must have RESET, not carried over.
+      record('jumping-resets-the-commit-not-carries-it',
+        !q('#result:not(.hidden)') && qa('.opt').length === 0,
+        'result panel visible: ' + !!q('#result:not(.hidden)') +
+        ', options on screen: ' + qa('.opt').length);
+      const sure = q('[data-conf="sure"]');
+      record('jumping-clears-the-sure-button',
+        !sure || sure.className.indexOf('sel') === -1,
+        'sure button class: ' + (sure ? sure.className : 'absent'));
+
+      // NOTE ON WHAT IS *NOT* CHECKED HERE, because a check that cannot fail on the
+      // bug it names is not evidence.
+      //
+      // A carried-over `state.commit` is invisible in the DOM: render() rebuilds a
+      // fresh `<button id="reveal" disabled>` and an empty `#commitNote`, so every
+      // DOM assertion here passes with the reset deleted (measured: 54/54, twice).
+      // Where it bites is check()'s verdict quadrant, and reading that from the probe
+      // needs a full answer cycle on the jumped rung, which is slow and fragile.
+      //
+      // So the fix is STRUCTURAL rather than tested: `render()` itself clears
+      // state.commit and state.pick, so no caller can get it wrong. The three checks
+      // above -- the jump happens, the result panel is gone, 0 options, sure not
+      // selected -- are what the browser can actually prove. The reset is pinned by
+      // `test_render_owns_the_per_item_commit_reset` in tests/test_bundle.py, which
+      // is a TEXT assertion and is labelled as one.
+    }
 
     report('done');
   } catch (err) {

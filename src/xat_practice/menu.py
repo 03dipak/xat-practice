@@ -4,16 +4,24 @@
 it. The learner never assembles a path, never learns what a `lesson_id` is, and
 never runs a second command.
 
-WHY A MENU AND NOT A FLAG
--------------------------
-MEASURED 2026-10-02: the second command was the thing people got wrong. `serve`
-defaults to the FIRST registered lesson, so `serve` alone silently opened Simple
-Interest, and reaching Geometry meant knowing `lesson-02-geometry-similarity`.
-The default was chosen to be safe, and it was safe by being invisible: a learner
-who wanted Geometry and typed the documented command got Simple Interest and no
-indication that a choice existed.
+THIS IS A PAGE, NOT A PROMPT
+-----------------------------
+It was a prompt first, and that was wrong. MEASURED 2026-10-02: `serve` defaulted
+to the FIRST registered lesson, so anyone who wanted Geometry typed the documented
+command and got Simple Interest with nothing saying a choice existed -- safe by
+being invisible. The fix was to ASK in the terminal, and the owner rejected that
+too: "I don't wanna invest the time in running commands". A CLI menu is the right
+shape for a CLI and the wrong shape for someone who wants to think about geometry
+rather than about process.
 
-A default that hides the choice is worse than a prompt.
+So: `serve` starts immediately, prints one URL, and every choice after that is a
+click on a web page. `render_index_html` writes that page to `out/index.html`, and
+`serve` serves `out/` as the root so each lesson is at `/<lesson_id>/` -- one
+origin, so switching subtopic needs no restart.
+
+`render_menu`, `choose` and `pick` were deleted rather than kept: the prompt had
+one caller and that caller is gone, and a function with no caller made to pass by
+a test is the coverage-floor defect with extra steps.
 
 THE LEVEL IS THE LEARNER'S CHOICE, NOT THE QUOTA'S
 -------------------------------------------------
@@ -128,65 +136,115 @@ def paper_shape_lines() -> list[str]:
     ]
 
 
-def render_menu() -> str:
-    """The whole menu as text. Pure function of the registry and the syllabus."""
-    entries = written_entries()
-    lines: list[str] = []
-    lines.append("")
-    lines.append("=" * 72)
-    lines.append("XAT PRACTICE -- what do you want to work on?")
-    lines.append("=" * 72)
-    lines.extend(paper_shape_lines())
-    lines.append("")
-
-    if not entries:
-        # Reachable by deregistering every lesson, and it must say the honest
-        # thing rather than print an empty numbered list that looks like a bug.
-        lines.append("  No lessons are written yet. Nothing to serve.")
-        return "\n".join(lines) + "\n"
-
-    lines.append(f"  {SECTION_QA_DI} -- the only section this project trains, and")
-    lines.append("  the only one with lessons written. VA&LR and DM are in the")
-    lines.append("  paper above and are not built here; that is the honest state.")
-    lines.append("")
-    width = max(len(e.label) for e in entries)
-    for n, e in enumerate(entries, 1):
-        lines.append(f"   {n}. {e.label:<{width}s}  {e.subtopic_label}")
-    lines.append("")
-    lines.append(f"   {len(entries)} of {_len_subtopics()} subtopics written. "
-                 f"Run `uv run xat-practice coverage` for the full ledger.")
-    lines.append("   0. quit")
-    lines.append("")
-    return "\n".join(lines) + "\n"
-
-
 def _len_subtopics() -> int:
     return len(_all_subtopics())
 
 
-def choose(number: int) -> Entry | None:
-    """Entry `number` (1-based), or None for quit/out of range."""
+
+# ---------------------------------------------------------------------------
+# the navigator: the page the learner actually lands on
+# ---------------------------------------------------------------------------
+
+_NAV_CSS = """
+:root{--ink:#12212e;--line:#c9d4de;--bg:#fbfcfd;--ok:#1d7a4c;--warn:#a05a00}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+main{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+h1{font-size:22px;margin:0 0 4px}
+h2{font-size:17px;margin:26px 0 8px}
+h3{font-size:15px;margin:0 0 6px;font-weight:600}
+p{margin:0 0 10px}
+.sub{color:#5b6b7a;margin:0 0 18px}
+.box{border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin:0 0 12px;
+  background:#fff}
+.box.off{background:#f4f6f8;color:#5b6b7a}
+.tag{display:inline-block;font-size:11px;letter-spacing:.04em;text-transform:uppercase;
+  border:1px solid var(--line);border-radius:4px;padding:2px 6px;margin:0 6px 6px 0}
+.tag.ok{border-color:var(--ok);color:var(--ok)}
+.tag.no{border-color:var(--line);color:#7a8894}
+.lesson{display:flex;flex-wrap:wrap;gap:10px;align-items:center;
+  justify-content:space-between;border:1px solid var(--line);border-radius:8px;
+  padding:12px 14px;margin:0 0 8px;background:#fff}
+.lesson a{color:var(--ink);font-weight:600;text-decoration:none;border-bottom:2px solid var(--ink)}
+.levels{font-size:12px;color:#5b6b7a}
+ul{margin:6px 0 0;padding-left:18px;color:#5b6b7a}
+code{background:#eef2f5;padding:1px 4px;border-radius:3px;font-size:13px}
+"""
+
+
+def render_index_html() -> str:
+    """The page at `/`: choose a section, then a subtopic, then a level.
+
+    Navigation lives HERE, in the browser, not in a shell prompt.
+
+    MEASURED 2026-10-02: the first attempt put the choice in the terminal --
+    `serve` asked, and the learner typed a number. The owner's objection was
+    exact: "I don't wanna invest the time in running commands." A CLI menu is the
+    right shape for a CLI and the wrong shape for a learner who wants to think
+    about geometry, not about process. So `serve` starts immediately, prints one
+    URL, and every subsequent choice is a click.
+
+    Served from `out/`, so each lesson is reachable at `/<lesson_id>/` and its own
+    `fetch('paper.json')` still resolves as a sibling -- one origin, no CORS, and
+    the learner can switch subtopic without restarting anything. That is also why
+    "one lesson per port" stopped being the right shape: switching in the UI
+    requires ONE origin.
+    """
+    from html import escape
+
     entries = written_entries()
-    if number < 1 or number > len(entries):
-        return None
-    return entries[number - 1]
+    total = _len_subtopics()
+    out: list[str] = []
+    out.append("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">")
+    out.append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">")
+    out.append("<title>XAT Practice &middot; choose a topic</title>")
+    out.append(f"<style>{_NAV_CSS}</style></head><body><main>")
 
+    out.append("<h1>XAT Practice</h1>")
+    out.append("<p class=\"sub\">Choose a section, then a topic. "
+               "Inside a lesson the four levels are tabs &mdash; take them "
+               "in any order you like.</p>")
 
-def pick(read: object = input) -> Entry | None:
-    """Ask, and return the chosen lesson. `read` is injected so this is testable
-    without a TTY -- which is the whole point of putting it in a module."""
-    print(render_menu(), end="")
-    try:
-        raw = read("  choose (or 0 to quit): ")  # type: ignore[operator]
-    except EOFError:
-        return None
-    raw = str(raw).strip()
-    if not raw:
-        return None
-    try:
-        n = int(raw)
-    except ValueError:
-        print(f"  '{raw}' is not a number. Type the number, or 0 to quit.")
-        return None
-    return choose(n)
+    # The paper, stated so the learner knows what they are aiming at.
+    out.append("<div class=\"box\"><h3>The paper</h3><ul>")
+    for line in paper_shape_lines():
+        out.append(f"<li>{escape(line)}</li>")
+    out.append("</ul></div>")
 
+    # SECTION: QA&DI is the one this project trains. The other two are listed and
+    # marked, because hiding them would make the project look finished.
+    out.append("<h2>Section 1 &mdash; QA&amp;DI</h2>")
+    if not entries:
+        out.append('<div class="box off"><p>No lessons are written yet, so '
+                   "there is nothing to open. Run <code>uv run xat-practice "
+                   "build</code> after writing one.</p></div>")
+        out.append(f'<p class="sub" style="margin-top:24px">0 of {total} '
+                   "subtopics written.</p>")
+        out.append("</main></body></html>")
+        return "".join(out)
+    out.append("<p class=\"sub\">"
+               f"{len(entries)} lesson(s) written across "
+               f"{len({e.topic_id for e in entries})} topic(s), ordered by "
+               "measured questions-per-year.</p>")
+    for e in entries:
+        out.append(
+            f'<div class="lesson"><div><h3>{escape(e.label)}</h3>'
+            f'<p class="levels">{escape(e.subtopic_label)}</p></div>'
+            f'<a href="{escape(e.lesson_id)}/">Open &rarr;</a></div>')
+
+    out.append("<h2>Sections not built yet</h2>")
+    for name, key in (("VA&amp;LR", "va_lr"), ("DM", "dm")):
+        n = PAPER_SHAPE["part1"][key]
+        out.append(f'<div class="box off"><h3>{name}</h3>'
+                   f"<p>{n} questions in the real paper. Nothing written here "
+                   "yet &mdash; this project trains QA&amp;DI only.</p></div>")
+    out.append('<div class="box off"><h3>GK (Part 2)</h3>'
+               "<p>Excluded from the percentile by XLRI, so it is out of "
+               "scope.</p></div>")
+
+    out.append(f'<p class="sub" style="margin-top:24px">{len(entries)} of '
+               f"{total} subtopics written. "
+               "<code>uv run xat-practice coverage</code> for the full ledger.</p>")
+    out.append("</main></body></html>")
+    return "".join(out)

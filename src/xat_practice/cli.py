@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from . import build_opencode, bundle, gates
+from .bundle import OUT_ROOT
 from .items import LESSON_SHAPE, LEVEL_RECIPES
 from .registry import LESSONS, items_written, subtopics_written
 from .syllabus import Tier, by_tier, self_check, stratum_counts
@@ -117,12 +118,11 @@ def cmd_build(_: argparse.Namespace) -> int:
     barrier working -- but with no next step printed, it reads as one.
     """
     bundle.main()
-    print("\nto open one in a browser (a file:// path will NOT work -- the browser"
-          " blocks\n  fetching paper.json, so the page says 'The question could not"
-          " be loaded'):\n")
-    for lesson in LESSONS:
-        print(f"  uv run xat-practice serve --lesson {lesson.lesson_id}")
-    print("    then http://127.0.0.1:8000/  (ctrl-c to stop)")
+    print("\n  ONE command opens it. No prompt -- it starts immediately:\n")
+    print("    uv run xat-practice serve")
+    print("    then http://127.0.0.1:8000/\n")
+    print("  A file:// path will NOT work: the browser blocks fetching paper.json,")
+    print("  so the page says 'The question could not be loaded'.")
     return 0
 
 
@@ -237,6 +237,7 @@ def make_server(root: Path, port: int) -> http.server.ThreadingHTTPServer:
     Threading fixes the class of bug, and `daemon_threads` plus a handler
     `timeout` stop an idle socket from pinning a worker either.
     """
+    import errno
     import functools
     import http.server
 
@@ -257,7 +258,43 @@ def make_server(root: Path, port: int) -> http.server.ThreadingHTTPServer:
         allow_reuse_address = True
 
     handler = functools.partial(_Handler, directory=str(root))
-    return _Server(("127.0.0.1", port), handler)
+    try:
+        return _Server(("127.0.0.1", port), handler)
+    except OSError as err:
+        # MEASURED 2026-10-02: running `serve` twice raised a bare
+        # `OSError: [Errno 98] Address already in use` with a six-frame traceback
+        # ending in `socketserver.py`. The second command is the most likely thing a
+        # learner types, and it told them nothing about what to do next. The whole
+        # point of the one-command flow is that a mistake here costs no time.
+        if err.errno in (errno.EADDRINUSE,):
+            raise SystemExit(
+                f"\n  port {port} is already in use -- a server is probably "
+                "still running.\n  Either stop it (ctrl-c in that terminal), or "
+                f"use another port:\n\n    uv run xat-practice serve --port "
+                f"{port + 1}\n\n  To serve something else entirely, pass "
+                "--lesson <lesson_id>.\n"
+            ) from err
+        raise
+
+
+def serve_root() -> Path:
+    """What `serve` serves when you give it no `--lesson`.
+
+    `out/` -- the WHOLE tree, not one lesson directory.
+
+    MEASURED 2026-10-02: rooting at a single lesson made the other lesson
+    unreachable without restarting on another port, and the level tabs are useless
+    if switching subtopic means leaving the page. So `/` is the navigator, each
+    lesson is at `/<lesson_id>/`, and its sibling `fetch('paper.json')` still
+    resolves -- one origin, no CORS.
+
+    Extracted as a pure function so a test can assert it without binding a socket.
+    Asserting this through `cmd_serve` requires either a real server or a monkeypatch
+    that replaces the very code under test -- MEASURED: the first version of these
+    tests did the latter, so `cmd_serve` returned early and every assertion passed
+    without reaching the branch.
+    """
+    return OUT_ROOT
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
@@ -273,39 +310,40 @@ def cmd_serve(args: argparse.Namespace) -> int:
     a browser holds a connection open, and the symptom is a page that never
     loads and never errors.
     """
-    # ONE COMMAND. With no `--lesson`, ask. MEASURED 2026-10-02: `serve` alone
-    # opened the FIRST registered lesson, so a learner who wanted Geometry and
-    # typed the documented command got Simple Interest and nothing telling them a
-    # choice existed. A default that hides the choice is worse than a prompt.
+    # A LESSON ID, a path, or NOTHING AT ALL.
     #
-    # Non-interactive stdin (CI, a pipe) must not hang, so it prints the menu and
-    # stops with instructions rather than waiting for a keypress that will never
-    # come. A menu that blocks forever in a script is a menu that hangs CI.
+    # With no `--lesson` this serves `out/` as the ROOT, which is the shape the
+    # whole navigation change depends on: `/` is the navigator (section -> topic),
+    # and each lesson is at `/<lesson_id>/`. One origin, so the learner can switch
+    # subtopic and level in the browser without restarting anything.
+    #
+    # MEASURED 2026-10-02, twice, in opposite directions:
+    #   1. `serve` prompted in the terminal for what to serve. The owner rejected
+    #      it -- "I don't wanna invest the time in running commands". A CLI menu is
+    #      the right shape for a CLI and the wrong shape for someone who wants to
+    #      think about geometry, not about process. So there is no prompt.
+    #   2. Before that, it defaulted to the FIRST registered lesson, so asking for
+    #      Geometry silently got Simple Interest. Also rejected. Hence: a page.
+    #
+    # It still accepts a path, because that is how you inspect a bundle that is
+    # not in the registry, and because a path is what `build` prints.
     if args.lesson is None:
-        if not sys.stdin.isatty():
-            from .menu import render_menu
+        root = OUT_ROOT
+        if not (root / "index.html").exists():
+            print(f"nothing built: no {root / 'index.html'}. Run "
+                  f"`uv run xat-practice build` first.", file=sys.stderr)
+            return 1
+        httpd = make_server(OUT_ROOT, args.port)
+        print(f"XAT Practice is up at  http://127.0.0.1:{args.port}/")
+        print("  that page lists the sections; pick one there. (ctrl-c to stop)")
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            print()
+        finally:
+            httpd.server_close()
+        return 0
 
-            print(render_menu(), end="")
-            print("  stdin is not a terminal, so nothing was chosen. Re-run "
-                  "without a pipe,\n  or pass --lesson <lesson_id>.")
-            return 0
-        from .menu import pick
-
-        chosen = pick()
-        if chosen is None:
-            print("  nothing selected; not serving.")
-            return 0
-        args.lesson = chosen.lesson_id
-        print(f"  serving {chosen.label} -- {chosen.subtopic_label}")
-
-    # A LESSON ID, not a path. MEASURED 2026-10-02: this took a filesystem path
-    # and defaulted to `bundle.OUT_DIR`, which is `out/` -- a directory of lesson
-    # directories. Serving it gave a directory listing, so with two lessons the
-    # learner had to know the exact `out/lesson-02-...` path to reach the second
-    # one at all, and the default served nothing.
-    #
-    # It still accepts a path, because that is how you inspect a bundle that is not
-    # in the registry, and because a path is what `build` prints.
     resolved = Path(args.lesson).resolve()
     if (resolved / "index.html").exists():
         root, label = resolved, str(resolved)

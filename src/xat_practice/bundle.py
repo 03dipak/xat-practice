@@ -33,6 +33,7 @@ from pathlib import Path
 
 from .gates import run
 from .items import Item
+from .menu import render_index_html
 from .registry import LESSONS, Lesson
 from .registry import assert_registry_is_honest as registry_assert_honest
 
@@ -79,6 +80,9 @@ STYLE = """\
     border-radius: 7px; background: #fff; font-size: 11px; letter-spacing: .07em;
     text-transform: uppercase; color: var(--muted); text-align: center;
   }
+  .rung { cursor: pointer; font-family: inherit; }
+  .rung:hover { border-color: var(--ink); }
+  .rung:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   .rung.on { border-color: var(--ink); color: var(--ink); font-weight: 600; }
   .rung.done { background: var(--ok); border-color: var(--ok); color: #fff; }
   .card {
@@ -273,11 +277,33 @@ async function loadKey(id) {
   return all.items[id];
 }
 
+// The rungs are TABS, not a progress bar.
+//
+// MEASURED 2026-10-02: these were `<div>`s -- a read-out of where you are in a
+// fixed queue. The owner asked for "tabs the 4 level i can choose any", which is
+// a different control: the level is a CHOICE, not a position. D26 says the same
+// thing -- the level belongs to the learner, and the paper mix is only applied
+// where a paper is being simulated. A ladder you can only climb forwards is a
+// queue wearing a ladder's clothes.
+//
+// Jumping backwards must NOT carry the previous item's commit or pick across.
+// `state.commit` and `state.pick` are per-item and are cleared on every jump, or
+// switching tabs would show the next rung with the last rung's "sure" already
+// filled in -- the learner would answer a question they never committed to.
 function rungBar() {
   document.getElementById('rungs').innerHTML = ORDER.map((id, n) => {
     const cls = n === state.i ? 'on' : (n < state.i ? 'done' : '');
-    return `<div class="rung ${cls}">${LABEL[id]}</div>`;
+    const cur = n === state.i ? ' aria-current="true"' : '';
+    return `<button type="button" class="rung ${cls}" data-i="${n}"${cur}>`
+      + `${LABEL[id]}</button>`;
   }).join('');
+}
+
+function jumpTo(n) {
+  if (n === state.i || n < 0 || n >= state.total) return;
+  state.i = n;
+  state.log[n] = null;
+  render();  // render() clears the commit and the pick -- see its first lines.
 }
 
 function esc(s) {
@@ -331,6 +357,23 @@ function teachCard(t) {
 }
 
 async function render() {
+  // PER-ITEM STATE IS RESET HERE, not by each caller.
+  //
+  // MEASURED 2026-10-02: `state.commit` and `state.pick` were cleared by `next()` and
+  // by `jumpTo()`, so correctness depended on every future caller remembering. That
+  // is the D12 shape -- a rule that lives in the callers instead of in the thing it
+  // constrains -- and the level tabs made a third caller.
+  //
+  // A carried-over `state.commit` is invisible in the DOM, which is why it survived
+  // two attempts to test it: `render()` rebuilds a fresh `<button id="reveal"
+  // disabled>` and an empty `#commitNote`, so the screen looks perfect. Where it
+  // bites is `check()`, which reads `state.commit` to choose the verdict quadrant --
+  // the page would tell the learner it was "Sure and WRONG" on a rung where they
+  // never committed to anything. Making render() own the reset removes the class of
+  // bug instead of testing for one instance of it.
+  state.commit = null;
+  state.pick = null;
+
   const stage = document.getElementById('stage');
 
   // PAINTED FIRST, FETCHED SECOND. No await has happened yet, so the first screen
@@ -525,6 +568,12 @@ function finish() {
 }
 
 document.addEventListener('click', e => {
+  // The level tabs. Checked BEFORE the option handler so a tab click can never be
+  // read as an option pick, and before `check()` so switching levels mid-question
+  // cannot submit.
+  const rung = e.target.closest('.rung');
+  if (rung) { jumpTo(Number(rung.dataset.i)); return; }
+
   const o = e.target.closest('.opt');
   if (o && !o.classList.contains('right')) {
     document.querySelectorAll('.opt').forEach(x => x.classList.remove('sel'));
@@ -685,6 +734,17 @@ def main() -> None:
         for it in paper["items"]:
             print(f"  {it['id']:6s} {it['level']:11s} score {it['level_score']:5.2f}  "
                   f"{it['level_drivers']}")
+
+    # The navigator at `/`. MEASURED 2026-10-02: `serve` originally ASKED in the
+    # terminal what to serve, which the owner rejected as time spent on process
+    # instead of on the topic. Navigation is now a page, so one server serves every
+    # lesson from ONE origin and the learner switches subtopic without a restart.
+    #
+    # It must be written LAST and it must not live inside any lesson directory,
+    # because serving `out/` as the root is what makes `/<lesson_id>/` work.
+    (OUT_ROOT / "index.html").write_text(render_index_html(), encoding="utf-8")
+    print(f"built {OUT_ROOT.relative_to(OUT_ROOT.parent)}/index.html  "
+          f"(the navigator: section -> topic -> level tabs)")
 
 
 if __name__ == "__main__":
