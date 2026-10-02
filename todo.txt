@@ -219,7 +219,12 @@ P4 — HOUSEKEEPING
 
 [P4-3] Do not hand-edit `opencode.json`. Edit `src/xat_practice/build_opencode.py`.
 
-[P4-4] Trap-count drift: `README.md` and `docs/DECISIONS.md` said "90 named traps"
+[P4-4] ~~The probe audited a hand-copied shell~~ — FIXED 2026-10-02. It now starts
+       from the served `index.html` and injects only itself, so it checks the real
+       markup. Corollary for future work: anything the probe does not copy is a thing
+       the probe never checked.
+
+[P4-5] Trap-count drift: `README.md` and `docs/DECISIONS.md` said "90 named traps"
        while the code said 104. Corrected 2026-10-02. Numbers in prose are not
        maintained by the build; the coverage ledger is.
 

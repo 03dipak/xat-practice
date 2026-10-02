@@ -277,6 +277,48 @@ function report(done) {
 
     const footText = norm(q('#foot').textContent);
     const m = footText.match(/Build ([0-9a-f]{8})/);
+    // THE BACK LINK. MEASURED 2026-10-02: it was `href="../"`, written when a
+    // lesson lived at `out/<lesson_id>/`. The exam layer nested the output to
+    // `out/<exam>/<section>/<lesson_id>/`, so `../` resolved to `out/xat/qa_di/`
+    // -- which has no index.html, and SimpleHTTPRequestHandler answers a directory
+    // with no index by serving a DIRECTORY LISTING. HTTP 200, so nothing went red,
+    // and the learner got a raw file index instead of the topics page.
+    //
+    // Checked in the browser because only the browser resolves a relative href the
+    // way a learner does. The text assertion in test_bundle.py pins the depth; this
+    // pins the resolution.
+    const backLink = q('#back');
+    record('the-lesson-page-offers-a-way-back', !!backLink,
+      backLink ? 'href=' + backLink.getAttribute('href') : 'no #back element');
+    if (backLink) {
+      // `fetch`, NOT an iframe. MEASURED 2026-10-02: the first version loaded the
+      // target in an iframe, and because the probe now runs inside the REAL
+      // index.html, that re-ran the whole probe recursively and onload never fired
+      // within the budget. `fetch` retrieves the bytes without executing a single
+      // script, which is all this check needs.
+      const target = new URL(backLink.getAttribute('href'), location.href).href;
+      let verdict = 'not fetched';
+      let isListing = false;
+      try {
+        const r = await fetch(target, { cache: 'no-store' });
+        const body = await r.text();
+        verdict = 'HTTP ' + r.status;
+        // Match the <TITLE>, not the body text. MEASURED 2026-10-02: the first
+        // version searched the whole body for /Directory listing/ and matched the
+        // lesson page's own explanatory COMMENT about this very defect. The real
+        // signal is that `SimpleHTTPRequestHandler` titles its listing page
+        // "Directory listing for <path>" -- which is a title, not prose.
+        const title = (body.match(/<title>([^<]*)<\/title>/i) || [, ''])[1];
+        isListing = /directory listing/i.test(title);
+        verdict += ', title "' + title.trim() + '"';
+      } catch (e) {
+        verdict = 'fetch failed: ' + e.message;
+      }
+      record('the-back-link-does-not-land-on-a-directory-listing',
+        verdict.startsWith('HTTP 200') && !isListing,
+        target + ' -> ' + verdict + ', directory listing: ' + isListing);
+    }
+
     record('the-page-states-which-build-it-is', !!m, m ? 'build ' + m[1] : footText.slice(0, 60));
     record('question-1-is-the-foundation-rung', /FOUNDATION/.test(q('.qno').textContent), norm(q('.qno').textContent));
 

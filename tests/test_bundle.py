@@ -12,6 +12,7 @@ conscience, and nothing else in this project matters if that is true.
 from __future__ import annotations
 
 import json
+import posixpath
 import re
 import shutil
 import subprocess
@@ -857,3 +858,50 @@ def test_rungs_are_done_only_when_attempted_not_when_earlier_in_the_queue(on_dis
         "a rung must be 'done' only if it was ANSWERED, not merely earlier in the "
         f"queue. Got:\n{bar[:400]}"
     )
+
+
+def test_the_back_link_depth_is_derived_and_reaches_the_navigator(on_disk):
+    """MEASURED 2026-10-02, and the reason this exists.
+
+    The back link was `href="../"`, correct while a lesson lived at
+    `out/<lesson_id>/`. The exam layer nested the output to
+    `out/<exam>/<section>/<lesson_id>/`, so `../` resolved to `out/xat/qa_di/`,
+    which has no `index.html` -- and `SimpleHTTPRequestHandler` answers a directory
+    with **no index** by serving a DIRECTORY LISTING.
+
+    So the link did not 404 and nothing went red. It dumped the learner on a raw
+    file index titled "Directory listing for /xat/qa_di/", which reads as the site
+    being broken. That is the whole defect class: a consumer that outlived the path
+    it was written for, with a 200 to hide it.
+
+    The href is now computed at build time from `out_dir`, and this asserts the
+    result resolves to the bundle ROOT rather than to any subdirectory.
+    """
+    from xat_practice.bundle import OUT_ROOT, out_dir
+    from xat_practice.registry import LESSONS
+
+    href = re.search(r'id="back" href="([^"]+)"',
+                       on_disk["index.html"]).group(1)
+    dest = out_dir(LESSONS[0].lesson_id)
+    depth = len(dest.relative_to(OUT_ROOT).parts)
+
+    assert href == "../" * depth, (
+        f"the back link is {href!r} but the lesson sits {depth} level(s) below "
+        f"the bundle root ({dest.relative_to(OUT_ROOT)}). A wrong depth does not "
+        "404 here -- it serves a directory listing with HTTP 200."
+    )
+    # And it must point at the ROOT, never at a subdirectory. `posixpath.normpath`
+    # of "../" * n against the lesson's own directory is what a browser does.
+    resolved = posixpath.normpath(
+        posixpath.join("/" + dest.relative_to(OUT_ROOT).as_posix() + "/", href))
+    assert resolved == "/", f"the back link resolves to {resolved!r}, not /"
+
+
+def test_no_served_page_carries_an_unescaped_build_placeholder(on_disk):
+    """The href is written by substituting `__HOME__`. If that substitution is ever
+    removed the page ships a literal placeholder, and nothing else would notice."""
+    for name in ("index.html", "lesson.js"):
+        assert "__HOME__" not in on_disk[name], (
+            f"{name} still contains the __HOME__ placeholder, so the build-time "
+            "substitution did not run"
+        )

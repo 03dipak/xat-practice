@@ -109,8 +109,7 @@ def stage(tmp: Path, expected: dict[str, int]) -> Path:
     The expected keys come from `answerkey.json`, i.e. from the keys the SOLVER
     recomputed. Injecting them is what lets the probe assert that the browser's
     own verdict agrees with the solver rather than with itself."""
-    for name in ("index.html", "lesson.js", "paper.json", "answerkey.json",
-                 "style.css"):
+    for name in ("lesson.js", "paper.json", "answerkey.json", "style.css"):
         shutil.copy(BUNDLE / name, tmp / name)
     key = json.loads((BUNDLE / "answerkey.json").read_text())["items"]
     expected = {i: key[i]["k"] for i in key}
@@ -132,18 +131,40 @@ def stage(tmp: Path, expected: dict[str, int]) -> Path:
         "key_text": first_key.get("key_text", ""),
         "numbers": sorted(set(_numbers(first.get("stem", "")))),
     }
-    html = PROBE.read_text()
-    assert "<!-- EXPECTED is injected" in html, "the probe lost its injection point"
+    # THE REAL PAGE, NOT A COPY OF ITS SHELL.
+    #
+    # MEASURED 2026-10-02: `ui_probe.html` carried its own hand-written `<main>` --
+    # its own `<h1>Lesson 1 &middot; Simple Interest</h1>`, its own `.rungs`, its own
+    # `#stage` -- and only borrowed `lesson.js`. So the probe was auditing a
+    # DUPLICATE of the markup, kept in sync by hand, and it had already drifted: its
+    # heading still said "Lesson 1 - Simple Interest" on the GEOMETRY lesson, and it
+    # had no back link at all. Two copies of a shell are two rules that can disagree,
+    # which is the defect this repo keeps paying for.
+    #
+    # So the probe now starts from the served `index.html` and injects only itself:
+    # the one script tag, plus a `#probe-out` element to read the verdict back from.
+    index = (BUNDLE / "index.html").read_text()
+    probe_js = PROBE.read_text()
+    assert "<!-- EXPECTED is injected" in probe_js, \
+        "the probe lost its injection point"
     inject = (
         "<script>const EXPECTED = " + json.dumps(expected) + ";window.EXPECTED="
         "EXPECTED;window.TEACH=" + json.dumps(teach_block) + ";window.Q1="
         + json.dumps(q1) + ";</script>\n"
     )
-    html = html.replace(
+    probe_js = probe_js.replace(
         "<!-- EXPECTED is injected by tools/ui_probe.py before this script runs.",
         inject + "<!-- injected by tools/ui_probe.py; the original note"
         " follows.", 1)
-    (tmp / "ui_probe.html").write_text(html)
+    # Lift the probe's own <script> blocks out of its file, so the page under test
+    # keeps ITS OWN markup and gains only the probe.
+    blocks = re.findall(r"<script>(.*?)</script>", probe_js, re.S)
+    assert blocks, "the probe has no inline script to inject"
+    injected = inject + "\n".join(f"<script>{b}</script>" for b in blocks)
+    html = index.replace("</body>", f'<h1 id="probe-out">PENDING</h1>'
+                                   f"{injected}\n</body>")
+    assert 'id="probe-out"' in html, "failed to add the element the verdict is read from"
+    (tmp / "index.html").write_text(html)
     return tmp
 
 
@@ -287,7 +308,7 @@ def main(argv: list[str] | None = None) -> int:
 
     base = f"http://127.0.0.1:{port}"
     cmd = [browser, "--no-sandbox", "--disable-gpu", "--hide-scrollbars",
-           "--virtual-time-budget=15000", "--dump-dom", f"{base}/ui_probe.html"]
+           "--virtual-time-budget=15000", "--dump-dom", f"{base}/"]
 
     shot_note = ""
     shots: list[str] = []

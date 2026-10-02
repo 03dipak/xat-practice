@@ -465,3 +465,29 @@ remembered without opening it:
 - **Verifying a fix requires proving you applied it.** My first attempt to
   re-break the import printed `substitution applied: False` and I nearly recorded a
   false finding that the new guard was useless.
+
+## The probe had its own copy of the page (2026-10-02)
+
+- **A hand-copied shell is a second rule that disagrees.** MEASURED: `ui_probe.html`
+  carried its own `<main>` — its own `<h1>Lesson 1 · Simple Interest</h1>`, its own
+  `.rungs`, its own `#stage` — and only borrowed `lesson.js`. So the probe audited a
+  **duplicate** of the markup, kept in sync by hand, and it had already drifted: its
+  heading still said *Lesson 1 · Simple Interest* on the **Geometry** lesson, and it
+  had no back link at all. It now starts from the served `index.html` and injects
+  only itself. **Anything the probe does not copy is a thing the probe never checked.**
+- **A link that outlives its path fails with HTTP 200, not 404.** The back link was
+  `href="../"`, correct while a lesson lived at `out/<lesson_id>/`. The exam layer
+  nested the output to `out/<exam>/<section>/<lesson_id>/`, so `../` resolved to
+  `out/xat/qa_di/` — which has no `index.html`, and `SimpleHTTPRequestHandler` answers
+  a directory with no index by serving a **DIRECTORY LISTING**. Nothing went red; the
+  learner got a raw file index titled *"Directory listing for /xat/qa_di/"*. The depth
+  is now computed at build time from `out_dir`, and two checks pin it.
+- **Changing a path means finding its consumers.** Three went stale at once when the
+  output was nested: the back link, `tests/test_api.py`'s served-directory, and
+  `tests/test_cli.py`'s expected build path. All three are now derived from `out_dir`
+  rather than written as literals.
+- **A check must match the SIGNAL, not the prose.** MEASURED: the back-link check
+  searched the fetched body for `/Directory listing/i` and matched **the lesson page's
+  own comment explaining this defect**. The real signal is the listing page's
+  `<title>`. That is the fourth time in this project a text search fired on correct
+  code — and the reason `ast` is used where it can be.

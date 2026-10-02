@@ -212,7 +212,14 @@ HTML = """<!doctype html>
   <h1>XAT Practice</h1>
   <div class="sub">One subtopic, four levels &mdash; foundation, easy, medium,
     hard. Nothing here is scored; everything here is meant to be understood.</div>
-  <a class="back" id="back" data-home="../" href="../">&larr; all topics</a>
+  <!-- PLACEHOLDER. MEASURED 2026-10-02: this was a hardcoded `href="../"`, which
+       was correct while a lesson lived at `out/<lesson_id>/`. The exam layer nested
+       the output to `out/<exam>/<section>/<lesson_id>/`, so `../` resolved to
+       `out/xat/qa_di/` -- which has no index.html, and `SimpleHTTPRequestHandler`
+       answers that with a DIRECTORY LISTING. So the back link did not 404; it
+       silently dumped the learner on a raw file index, which looks like the site
+       being broken. The depth is now computed per lesson and substituted in. -->
+  <a class="back" id="back" href="__HOME__">&larr; all topics</a>
   <div class="rungs" id="rungs"></div>
   <div id="stage"></div>
 </main>
@@ -489,8 +496,10 @@ async function render() {
   if (sub) sub.textContent = state.subtopicLabel || '';
   document.title = `XAT Practice · ${state.topicLabel || ''}`
     + (state.subtopicLabel ? ` · ${state.subtopicLabel}` : '');
-  const back = document.getElementById('back');
-  if (back) back.href = back.getAttribute('data-home') || '../';
+  // The back link's href is written at BUILD time from the registry (see
+  // `build_one`). It was previously overwritten here from a hardcoded `../`,
+  // which is what silently sent the learner to a directory listing.
+  // Nothing to do: leave the built href alone.
 
   // The teaching card, on question 1 only. It is NOT on later rungs: the point is
   // to read it once before the ladder starts, and repeating it four times is the
@@ -808,7 +817,11 @@ def build_one(lesson: Lesson) -> Path:
                           lesson.teach)
     dest = out_dir(lesson.lesson_id)
     dest.mkdir(parents=True, exist_ok=True)
-    (dest / "index.html").write_text(HTML)
+    # Depth back to the bundle root, where the navigator lives. DERIVED, never a
+    # literal: `out/<exam>/<section>/<lesson>/` is three levels deep today, and
+    # hardcoding it is what broke the link when the exam layer landed.
+    home = "../" * len(dest.relative_to(OUT_ROOT).parts)
+    (dest / "index.html").write_text(HTML.replace("__HOME__", home))
     (dest / "lesson.js").write_text(JS)
     (dest / "style.css").write_text(STYLE)
     for name, payload in files.items():
