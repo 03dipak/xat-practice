@@ -274,62 +274,77 @@ HARD = Item(
     id="L1-H",
     subtopic_id=SUBTOPIC,
     stratum=Stratum.QUANT,
-    stem="A debt of Rs 12,000 is repaid in two equal annual instalments, and "
-         "simple interest at 10% per annum is charged for the 2 years on the "
-         "whole amount. The total repaid is:",
-    options=("Rs 12,000", "Rs 9,600", "Rs 7,200", "Rs 14,400", "Rs 14,520"),
+    stem="Simple interest on a sum for 3 years is 30% of the sum. At the same "
+         "rate, what is the total amount after 5 years?",
+    # MEASURED 2026-10-02, and this item is the SECOND attempt at the hard rung.
+    #
+    # The first one derived `12000 + 12000*10*2/100`, which digit-masks to
+    # `N + N*N*N/N` -- IDENTICAL to L1-E. Changing only its flags and nothing a
+    # learner sees dropped it from 7.40 to 2.50, the EASY tier. So 66% of its
+    # difficulty was a declared flag with nothing in the derivation to prove it,
+    # `G17` refused the lesson, and the rung was arithmetic with new numbers on
+    # it.
+    #
+    # This one adds an OPERATION no lower rung performs: infer the RATE from a
+    # stated interest, then re-apply it over a different time. The rate is never
+    # given. Digit-masked this is `N + (N*N/(N*N))*N*N*N/N`, distinct from
+    # `N*N*N/N`, `N + N*N*N/N` and `(N*N/(N*N)) / (N*N/(N*N))`.
+    #
+    # The trap it creates is the best one in the lesson: interest is linear in
+    # time, so the tempting move is to take the 3-year figure and carry it.
+    options=("Rs 1,300", "Rs 2,500", "Rs 1,750", "Rs 1,500", "Rs 700"),
     option_values=(
-        "12000",
-        "9600",
-        "7200",
-        "14400",
-        "14520",
+        "1300",
+        "2500",
+        "1750",
+        "1500",
+        "700",
     ),
+    # key_index 3, which keeps the four rungs on four different letters. G15
+    # refuses a set whose best fixed-letter strategy beats random guessing by
+    # more than 10% of the marks, and this position is what lets it pass.
     key_index=3,
-    derivation="12000 + 12000*10*2/100",
+    # The parenthesised group is the SUBSTITUTION, and it is now visible in the
+    # string rather than asserted: 300 x 100 / (1000 x 3) is computed first and
+    # fed into the main formula as a rate.
+    derivation="1000 + (300*100/(1000*3))*1000*5/100",
     distractors=(
         Distractor(
-            text="Rs 12,000",
-            produces=12000,
-            misconception="the interest IGNORED on the grounds that instalments "
-                          "were 'equal', i.e. equal principal and nothing else",
+            text="Rs 1,300",
+            misconception="the 3-year interest carried over untouched, 1,000 + 300. "
+                          "Interest IS linear in time, which is exactly why this "
+                          "feels right: the rate never has to be found at all",
             is_real_near_miss=True,
+            produces=1000 + 300,
         ),
         Distractor(
-            text="Rs 9,600",
-            produces=(12000 - 12000*10*2/100),
-            misconception="the interest SUBTRACTED, 12000 - 12000x10x2/100. The "
-                          "sign error: the debt was repaid early, so the amount "
-                          "owed is larger than the principal, not smaller",
+            text="Rs 2,500",
+            misconception="the 30% read as the ANNUAL rate, 1,000 + 1,000 x 30 x 5 "
+                          "/ 100. The percentage was quoted for three years and "
+                          "used for one",
             is_real_near_miss=True,
+            produces=1000 + 1000 * 30 * 5 / 100,
         ),
         Distractor(
-            text="Rs 7,200",
-            produces=((12000 + 12000*10*2/100)/2),
-            misconception="the interest halved as well as the principal, "
-                          "treating two instalments as two half-sums each "
-                          "accruing half the interest on half the time",
+            text="Rs 1,750",
+            misconception="the 30% halved to 15% to 'fit' a year, 1,000 + 1,000 x "
+                          "15 x 5 / 100. Scaling a percentage without asking what "
+                          "it was a percentage OF",
             is_real_near_miss=True,
+            produces=1000 + 1000 * 15 * 5 / 100,
         ),
         Distractor(
-            # MEASURED 2026-10-02 by `key-auditor`, and confirmed by hand: this
-            # was Rs 14,700, while its own stated cause, 12000 x 1.1^2, is
-            # 14,520. No clean rule reaches 14,700 -- it needs r x t = 0.225.
-            # The lesson handed the learner the arithmetic for one number while
-            # labelling a different one, so a learner who followed the lesson
-            # arrived at 14,520 and could not see why it had been rejected.
-            text="Rs 14,520",
-            produces=(12000*sp.Rational(11,10)**2),
-            misconception="the rate read as 10% per YEAR compounding, "
-                          "12000 x 1.1 x 1.1 = 14,520, instead of simple "
-                          "interest on the full sum for 2 years",
+            text="Rs 700",
+            misconception="the interest SUBTRACTED, 1,000 - 300. A sum you are "
+                          "adding to always ends above where it started",
             is_real_near_miss=True,
+            produces=1000 - 300,
         ),
     ),
     derivation_steps=int(LEVEL_RECIPES[Level.HARD]["derivation_steps"]),
     needs_substitution=True,
     insight_required=True,
-    calculator_minutes=1.9,
+    calculator_minutes=1.6,
 )
 
 LESSON = (FOUNDATION, EASY, MEDIUM, HARD)
@@ -402,28 +417,30 @@ SOLUTIONS: dict[str, tuple[str, ...]] = {
         "shortcut.",
     ),
     "L1-H": (
-        "The insight: simple interest belongs to the WHOLE sum for the WHOLE "
-        "time. When the debt is repaid in instalments, that total interest is "
-        "still owed in full -- the instalments only change WHEN you pay, not "
-        "HOW MUCH interest there is.",
-        "Step 1 - total interest on the whole sum. 12,000 x 10 x 2 / 100 = "
-        "2,400. It does not matter that the debt is split; the rate applies to "
-        "12,000 for 2 years either way.",
-        "Step 2 - total repaid. 12,000 + 2,400 = 14,400. The instalments "
-        "divide this total into two payments of 7,200; they do not change it.",
-        "Why Rs 9,600 is wrong: 12,000 - 2,400. The sign. A debt you are "
-        "repaying costs you MORE than you borrowed, never less. If the answer "
-        "to 'how much do I repay' is below the principal, the sign is wrong.",
-        "Why Rs 7,200 is wrong: that is one instalment, not the total. Both "
-        "halves of the question -- the sum and the interest -- were halved, "
-        "and the question asked for the total repaid.",
-        "Why Rs 12,000 is wrong: instalments being equal means equal PAYMENTS. "
-        "It does not mean the interest is zero, and it does not mean the "
-        "principal is all that is owed.",
-        "Why Rs 14,520 is wrong: 12,000 x 1.1 x 1.1 = 14,520, i.e. the rate "
-        "compounded for two years on one balance. Simple interest is "
-        "12,000 x 10 x 2 / 100 = 2,400 with no compounding, however the debt "
-        "happens to be paid off.",
+        "The insight: the rate is NEVER given. The 30% is an interest for three "
+        "years, so it has to be converted back into a rate before it can be used "
+        "on five. Interest is linear in time, which is a trap here rather than a "
+        "shortcut.",
+        "Step 1 - what 30% of the sum is. 30% of 1,000 is 300, and that is the "
+        "interest for 3 years.",
+        "Step 2 - recover the rate. 300 = 1,000 x R x 3 / 100, so R = 300 x 100 / "
+        "(1,000 x 3) = 10 per cent per annum.",
+        "Step 3 - interest over 5 years. 1,000 x 10 x 5 / 100 = 500.",
+        "Step 4 - the amount. 1,000 + 500 = 1,500.",
+        "Why Rs 1,300 is wrong: that is 1,000 + 300, the 3-year interest carried "
+        "over untouched. This is the move this item is built to catch, because "
+        "interest really is linear in time -- but linearity is about how "
+        "interest SCALES once you have a rate, not a substitute for finding one.",
+        "Why Rs 2,500 is wrong: 1,000 + 1,000 x 30 x 5 / 100. The 30% was used "
+        "as the annual rate. It was quoted for THREE years, so using it for one "
+        "overstates the interest by a factor of three.",
+        "Why Rs 1,750 is wrong: 1,000 + 1,000 x 15 x 5 / 100. The 30% was halved "
+        "to make it 'fit' a year. Scaling a percentage is only valid when you "
+        "know what it was a percentage of, and here it was a percentage of the "
+        "sum, over three years.",
+        "Why Rs 700 is wrong: 1,000 - 300. A sum you are adding interest to ends "
+        "above where it started. If an amount owed comes out below the principal, "
+        "the sign is wrong.",
     ),
 }
 

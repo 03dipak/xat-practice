@@ -96,7 +96,9 @@ def test_every_key_equals_its_derivation_by_hand():
         "L1-F": sp.Rational(1000 * 10 * 2, 100),
         "L1-E": 10000 + 10000 * 5 * 2 // 100,
         "L1-M": sp.Rational(2, 3),
-        "L1-H": 12000 + 12000 * 10 * 2 // 100,
+        # L1-H rewritten 2026-10-02. 30% of 1000 is 300 for THREE years, so
+        # the rate is 300*100/(1000*3) = 10, and 5 years of interest is 500.
+        "L1-H": 1000 + (300 * 100 // (1000 * 3)) * 1000 * 5 // 100,
     }
     for item in L.LESSON:
         assert sp.nsimplify(sp.sympify(item.derivation)) == expected[item.id]
@@ -182,10 +184,25 @@ def test_compounding_is_a_named_distractor_at_easy_level():
 
 
 def test_the_sign_error_is_a_named_distractor_at_hard_level():
-    """A debt repaid early costs MORE, and `Rs 9,600` is the sign error."""
+    """A sum you are ADDING to ends above where it started.
+
+    MEASURED 2026-10-02: this asserted `Rs 9,600`, which was the sign error on the
+    OLD hard rung. The rung has been rebuilt -- it now infers a rate and re-applies
+    it -- so the distractor is `Rs 700` and the assertion follows the item rather
+    than the item's former number. A test that pins a specific figure stops
+    reporting when the item improves."""
     texts = [d.text for d in L.HARD.distractors]
-    assert "Rs 9,600" in texts
-    assert any("subtracted" in d.misconception.lower() for d in L.HARD.distractors)
+    sign = [d for d in L.HARD.distractors if "subtracted" in d.misconception.lower()]
+    assert sign, "the hard rung no longer carries a sign error at all"
+    below = [t for t in texts if t.replace("Rs ", "").replace(",", "").isdigit()
+             and int(t.replace("Rs ", "").replace(",", "")) < 1000]
+    assert below, (
+        f"no option is below the principal 1000, so the sign error has no "
+        f"home: {texts}"
+    )
+    # and the sign error's own option really is principal MINUS interest
+    key_value = sp.nsimplify(sp.sympify(L.HARD.key_value))
+    assert int(sp.nsimplify(sign[0].produces)) == 1000 - 300 < int(key_value)
 
 
 # ---------------------------------------------------------------------------
@@ -311,10 +328,11 @@ def test_every_distractor_is_produced_by_the_move_it_names():
             "1 : 1": F(F(1440, P1), F(2160, P2)),  # interest over its OWN principal
         },
         "L1-H": {
-            "Rs 12,000": 12000,                  # interest ignored
-            "Rs 9,600": 12000 - 12000 * 10 * 2 / 100,   # interest subtracted
-            "Rs 7,200": (12000 + 12000 * 10 * 2 / 100) / 2,  # one instalment
-            "Rs 14,520": 12000 * F(11, 10) ** 2,  # compounded for two years
+            # L1-H rebuilt: infer the rate, then re-apply it over 5 years.
+            "Rs 1,300": 1000 + 300,               # the 3-year interest carried over
+            "Rs 2,500": 1000 + 1000 * 30 * 5 / 100,    # 30% read as the annual rate
+            "Rs 1,750": 1000 + 1000 * 15 * 5 / 100,    # 30% halved to fit a year
+            "Rs 700": 1000 - 300,                 # interest subtracted
         },
     }
     for item in L.LESSON:
@@ -438,9 +456,6 @@ def test_L1M_needs_its_two_collapse_traps_redesigned():
     )
 
 
-@pytest.mark.xfail(strict=True, reason="OPEN DEFECT, measured 2026-10-02 by "
-                                        "level-auditor AND question-setter, "
-                                        "independently. See the docstring.")
 def test_each_rung_has_its_own_derivation_shape():
     """The measurement both reviewers asked for: FOUR pairwise-distinct
     digit-masked derivation shapes across the four rungs.
@@ -452,12 +467,14 @@ def test_each_rung_has_its_own_derivation_shape():
         L1-M  (1440*100/(8*3))/(2160*...)     ->  (N*N/(N*N)) / (N*N/(N*N))
         L1-H  12000 + 12000*10*2/100          ->  N + N*N*N/N     <-- same as E
 
-    **The HARD rung is EASY's arithmetic relabelled.** Falsification, run by
-    `level-auditor`: replacing L1-H's `insight_required=False`,
-    `needs_substitution=False`, `derivation_steps=2` -- i.e. changing nothing a
-    learner sees -- drops its score from 7.40 to 2.50, which is the EASY tier.
-    So 4.90 of 7.40, **66% of the hard item's difficulty, is a declared flag with
-    nothing in the derivation to prove it.** The level is partly a label.
+    **The HARD rung WAS EASY's arithmetic relabelled, and it is no longer.**
+    `level-auditor` falsified it: replacing L1-H's `insight_required=False`,
+    `needs_substitution=False`, `derivation_steps=2` -- changing nothing a learner
+    sees -- dropped its score from 7.40 to 2.50, the EASY tier. So 4.90 of 7.40,
+    **66% of the hard item's difficulty, was a declared flag with nothing in the
+    derivation to prove it.** `G17` refused the lesson, and the rung was rebuilt
+    around an operation no lower rung performs: infer the RATE from a stated
+    interest, then re-apply it over a different time.
 
     Why no gate caught it, and this is the generalisable finding:
 
@@ -471,10 +488,8 @@ def test_each_rung_has_its_own_derivation_shape():
     - Nothing anywhere compares a level FLAG to the derivation the flag claims to
       describe. `derive_level` reads the flags; no gate reads the derivation.
 
-    So this is the next gate the product needs: **a rung's claimed flags must be
-    provable from its derivation string.** Until then the ladder's top rung is a
-    comment. `xfail(strict=True)` so it cannot be quietly fixed at the symptom --
-    relabelling L1-H's numbers without changing its structure would flip this."""
+    `G17_derivation_shape_distinct` now enforces this on every set, so the
+    property is no longer a fact about one lesson but a rule about forty."""
     import re
 
     shapes = [re.sub(r"[0-9]+", "N", it.derivation) for it in L.LESSON]

@@ -984,3 +984,90 @@ yet. It is the gate that would have caught gap #1 and #2, and it is the reason
 `test_each_rung_has_its_own_derivation_shape` is `xfail(strict=True)` rather than
 a passing test — because until `G17` exists, the check is a fact about one lesson
 and not a rule about forty.
+
+---
+
+## 9. D19 — `G17`: a rung must add an OPERATION, not a number
+
+**Ruled 2026-10-02. Owner's steps 1 and 2, collapsed into one gate, because they
+are one defect seen from two angles.**
+
+### What it refuses
+
+Two items in the same set whose derivations reduce to the same shape once digits
+are masked. `G6` cannot see this: `G6` fingerprints the **stem**.
+
+```
+L1-F  1000*10*2/100                 ->  N*N*N/N
+L1-E  10000 + 10000*5*2/100         ->  N + N*N*N/N
+L1-M  (1440*100/(8*3))/(2160*100/…) ->  (N*N/(N*N)) / (N*N/(N*N))
+L1-H  12000 + 12000*10*2/100        ->  N + N*N*N/N      <-- identical to E
+```
+
+`level-auditor` falsified it by changing nothing a learner sees: clearing
+L1-H's `insight_required`, `needs_substitution` and `derivation_steps` dropped it
+from **7.40 to 2.50** — the EASY tier. So **4.90 of 7.40, 66% of the hard item's
+difficulty, was a declared flag.** `derive_level` charges
+`steps × 0.85 + 1.2 + 2.0 + 0.2 per near-miss`, so **the flags ARE the score**,
+and nothing anywhere compared a flag to the derivation it claims to describe.
+
+### Why no other gate caught it
+
+- `G7` compares `claimed_level` to the derived level, and `claimed_level` is
+  `None` on **4 of 4** items. Its entire automated half is inert; the rung lives
+  in a comment.
+- `G6` fingerprints the stem, so compounding-as-simple-interest is drilled at
+  L1-E *and* L1-H and every gate passes.
+- `G17` is the first gate to look at the **arithmetic**.
+
+### What G17 does NOT prove, pinned by a test
+
+It cannot verify `derivation_steps`, `needs_substitution` or
+`insight_required`. Those are claims about how many reasoning moves a human
+makes, and "steps" is explicitly *not* operator count — `1000*10*2/100` has three
+operators and the FOUNDATION rung correctly claims **one** step.
+`test_G17_does_not_claim_to_verify_the_difficulty_flags` asserts that, because a
+gate credited with more than it does is worse than no gate.
+
+**Arithmetic is a gate. Plausibility, and whether an item is really at its tier,
+stay a `key-auditor` and `level-auditor` judgement.**
+
+### The hard rung, rebuilt — decision (a), rewrite
+
+The rung now performs an operation no lower rung does: **infer the rate from a
+stated interest, then re-apply it over a different time.**
+
+> Simple interest on a sum for 3 years is 30% of the sum. At the same rate, what
+> is the total amount after 5 years?
+
+`1000 + (300*100/(1000*3))*1000*5/100` → masks to `N + (N*N/(N*N))*N*N*N/N`.
+**4 of 4 distinct shapes.** The rate is never given; it has to be recovered.
+
+The trap it creates is the best in the lesson. Interest *is* linear in time, so
+the tempting move is to carry the 3-year figure straight over — `Rs 1,300` =
+`1000 + 300` — which is right about the property and wrong about its use.
+
+Its `needs_substitution` is now **visible in the string**: the parenthesised group
+`300*100/(1000*3)` is computed first and fed into the main formula as a rate. That
+is the first rung whose flag is provable by reading it.
+
+### Two ordering and fixture defects found while building it
+
+1. **`G15` cleared `res.admitted`, so `G17` could never run.** An unreachable gate
+   is a specification, not a gate. Both paper-level gates now report before the
+   list is cleared, and `test_both_paper_level_gates_report_before_the_admitted_
+   list_is_cleared` pins it — a paper with two defects must report both, or an
+   author fixes one and believes the paper is clean.
+2. **Every paper fixture in `test_gates.py` carried the same derivation**
+   `1000*10*2/100`, so the "clean 20-item paper" was twenty copies of one piece of
+   arithmetic and `G17` refused the whole set, correctly. The fixture now uses
+   twenty distinct shapes that all evaluate to 200.
+
+### A bug I introduced and the tests caught
+
+Adding G17 to `GATE_IDS` used a blanket string replace, which also hit the three
+`refuse("G16…")` calls inside G16's body and gave every G16 refusal the detail
+`"G17_derivation_shape_distinct"`. `test_G16_refuses_an_option_its_own_explanation_
+does_not_produce` failed on it immediately. A blanket replace across a file that
+contains the string being replaced is the hazard; the test that asserts a refusal's
+*detail text* is what caught it.

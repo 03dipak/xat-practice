@@ -418,6 +418,23 @@ def _rotate_key(item: Item, to_index: int) -> Item:
                                key_index=to_index)
 
 
+#: Twenty DISTINCT digit-masked derivation shapes that all evaluate to 200.
+#:
+#: MEASURED 2026-10-02. Every paper fixture in this file previously carried the
+#: single derivation `1000*10*2/100`, so the "clean 20-item paper" was twenty
+#: copies of one piece of arithmetic -- and `G17_derivation_shape_distinct`
+#: refused the whole set, correctly. A fixture for a paper that admits cleanly
+#: has to BE a paper of distinct reasoning shapes.
+_SHAPES: tuple[str, ...] = (
+    "1000*10*2/100", "(1000*2/100)*10", "1000*(10*2/100)", "(10*1000*2)/100",
+    "1000*10*(2/100)", "2000*10/100*1", "(2000/100)*10", "(1000/100)*10*2",
+    "1000/100*10*2", "1000*20/10/10", "(1000*20/10)/10", "1000*10*2/100/1",
+    "1*1000*10*2/100", "(1000*10*2/100)+0", "(1000*10*2)/100*1",
+    "1000*(10*(2/100))", "((1000*2)*10)/100", "1000*((10*2)/100)",
+    "(1000*(10*2))/100", "1000*10*2/(100*1)",
+)
+
+
 def at_level(level: Level, i: int) -> Item:
     """An item whose STRUCTURE is the recipe for `level`. This is the only
     sanctioned way to build a fixture at a target level.
@@ -437,6 +454,7 @@ def at_level(level: Level, i: int) -> Item:
     item = _rotate_key(quant_item(
         id=f"{level.value}-{i}",
         stem=_DISTINCT_STEMS[i],
+        derivation=_SHAPES[i % len(_SHAPES)],
         derivation_steps=int(r["derivation_steps"]),      # type: ignore[call-overload]
         needs_substitution=bool(r["needs_substitution"]), # type: ignore[call-overload]
         insight_required=bool(r["insight_required"]),     # type: ignore[call-overload]
@@ -581,6 +599,12 @@ def test_every_gate_id_is_reachable():
                              is_real_near_miss=True) for i in range(4)))
     fire(unproven)
 
+    # G17: two items with the SAME digit-masked derivation. MEASURED 2026-10-02:
+    # Lesson 1's L1-E and L1-H both reduced to `N + N*N*N/N` and every other gate
+    # passed them, because G6 fingerprints the STEM and nothing looked at the
+    # arithmetic.
+    fire(_rotate_key(quant_item(id="same-shape-a", stem="Stem alpha one"), 0),
+         _rotate_key(quant_item(id="same-shape-b", stem="Stem beta two"), 1))
     missing = set(GATE_IDS) - fired
     assert not missing, f"unreachable gates: {sorted(missing)}"
 
@@ -873,6 +897,7 @@ def test_g16_refuses_an_option_its_own_explanation_does_not_produce():
         "the refusal must name BOTH numbers, or the author cannot tell which one "
         f"is wrong: {fired[0].detail}"
     )
+    assert res.admitted == []
     assert dataclasses  # keep the import honest
 
 
@@ -934,3 +959,89 @@ def test_g16_does_not_claim_to_check_plausibility():
         "G16 must pass the /18 distractors -- the arithmetic is valid -- which is "
         "exactly why plausibility stays a key-auditor judgement"
     )
+
+
+# ---------------------------------------------------------------------------
+# G17 -- the ladder must add an OPERATION, not a number
+# ---------------------------------------------------------------------------
+# MEASURED 2026-10-02, by `level-auditor` and `question-setter` independently.
+# Lesson 1's L1-E and L1-H both digit-masked to `N + N*N*N/N`. Changing only
+# L1-H's flags and nothing a learner sees dropped it 7.40 -> 2.50, the EASY tier,
+# so 66% of the hard item's difficulty was a declared flag with nothing in the
+# derivation to prove it. Every other gate passed it: G7's `claimed_level` is
+# None on all four items, and G6 fingerprints the STEM, not the arithmetic.
+
+def test_derivation_shape_masks_digits_and_keeps_the_structure():
+    from xat_practice.gates import derivation_shape
+
+    assert derivation_shape("1000*10*2/100") == "N*N*N/N"
+    assert derivation_shape("10000 + 10000*5*2/100") == "N + N*N*N/N"
+    assert derivation_shape("1000*10*2/100") == derivation_shape("5000*20*2/100")
+
+
+def test_G17_refuses_two_items_that_reduce_to_the_same_arithmetic():
+    from xat_practice.gates import derivation_shape
+
+    assert derivation_shape(
+        "10000 + 10000*5*2/100") == derivation_shape("12000 + 12000*10*2/100")
+    items = [
+        _rotate_key(quant_item(id="easy", stem="An easy item about alpha"), 1),
+        _rotate_key(quant_item(id="hard", stem="A hard item about beta"), 2),
+    ]
+    res = run(items)
+    assert any(r.gate == "G17_derivation_shape_distinct" for r in res.refusals), (
+        "two items with the same arithmetic were admitted; one of them is not a "
+        "new rung, it is the same question with different numbers"
+    )
+    assert res.admitted == []
+
+
+def test_G17_is_satisfied_by_the_real_lesson():
+    """Lesson 1 now scores 4 of 4. It was 3 of 4 this morning."""
+    from xat_practice.gates import derivation_shape
+    from xat_practice.lesson1 import LESSON
+
+    shapes = [derivation_shape(i.derivation) for i in LESSON]
+    assert len(set(shapes)) == 4, f"only {len(set(shapes))} distinct shapes: {shapes}"
+
+
+def test_G17_does_not_claim_to_verify_the_difficulty_flags():
+    """The honest boundary, pinned so it cannot be forgotten.
+
+    `derive_level` charges `steps x 0.85 + 1.2 for substitution + 2.0 for
+    insight + 0.2 per near-miss`. So the FLAGS ARE THE SCORE -- and they are
+    declarations about how many reasoning moves a human makes, not properties of a
+    string. `1000*10*2/100` has three operators and Lesson 1's FOUNDATION rung
+    correctly claims ONE step, because "steps" means reasoning moves.
+
+    So G17 proves two items are not the same arithmetic. It cannot prove a flag
+    is true. Asserted here because a gate that gets credited with more than it
+    does is worse than no gate."""
+    from xat_practice.items import LEVEL_RECIPES, Level, derive_level
+    from xat_practice.lesson1 import FOUNDATION
+
+    assert derive_level(FOUNDATION).score == 1.25
+    assert FOUNDATION.derivation.count("*") + FOUNDATION.derivation.count("/") == 3, (
+        "three operators, one claimed step -- so step count is NOT operator count, "
+        "and no arithmetic check can verify the flag"
+    )
+    assert LEVEL_RECIPES[Level.HARD]["insight_required"] is True
+
+
+def test_both_paper_level_gates_report_before_the_admitted_list_is_cleared():
+    """MEASURED: G15 cleared `res.admitted` and the gates after it were left with
+    nothing to judge, so a second paper-level defect was invisible. That is a
+    defect being hidden by an unrelated one, and it made G17 unreachable."""
+    items = [
+        # keys all on one letter -> G15
+        _rotate_key(quant_item(id=f"k{i}", stem=_DISTINCT_STEMS[i]), 1)
+        for i in range(3)
+    ]
+    res = run(items)
+    gates = {r.gate for r in res.refusals}
+    assert "G15_key_not_predictable" in gates
+    assert "G17_derivation_shape_distinct" in gates, (
+        f"only {gates} reported; two independent paper-level defects must both be "
+        "visible, or an author fixes one and believes the paper is clean"
+    )
+    assert res.admitted == []

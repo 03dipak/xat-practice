@@ -23,7 +23,7 @@ GATE_IDS = (
     "G8_near_miss_distractors", "G9_calc_budget", "G10_stratum_shape",
     "G11_mix_within_tolerance", "G12_misconceptions_named", "G13_no_leak",
     "G14_option_value_matches_label", "G15_key_not_predictable",
-    "G16_distractor_produces_its_option",
+    "G16_distractor_produces_its_option", "G17_derivation_shape_distinct",
 )
 
 
@@ -314,7 +314,14 @@ def run(items: list[Item]) -> GateResult:
             res.admitted.append(it)
 
     res.admitted = _enforce_mix(res, items)
+    # Both paper-level gates run before `admitted` is cleared, so one defect does
+    # not hide the other. MEASURED: G15 cleared the list and G17 was left with
+    # nothing to judge, which made it unreachable -- an unreachable gate is a
+    # specification, not a gate.
     _refuse_predictable_keys(res, res.admitted)
+    _refuse_repeated_shapes(res, res.admitted)
+    if any(r.gate in _PAPER_LEVEL_GATES for r in res.refusals):
+        res.admitted = []
     return res
 
 
@@ -327,6 +334,12 @@ def run(items: list[Item]) -> GateResult:
 #: letter without reading anything is worth more than 10% of the marks is a paper
 #: that pays for NOT retrieving, and the whole product is built to prevent that.
 KEY_EXPLOIT_CEILING = 0.10
+
+#: Gates that judge a SET rather than one item. They all report before the
+#: admitted list is cleared, so a paper with two defects reports both.
+_PAPER_LEVEL_GATES = frozenset({
+    "G15_key_not_predictable", "G17_derivation_shape_distinct",
+})
 
 
 def fixed_letter_best(items: list[Item]) -> tuple[int, float, int]:
@@ -388,7 +401,6 @@ def _refuse_predictable_keys(res: GateResult, items: list[Item]) -> None:
             f"reading."
         ),
     ))
-    res.admitted = []
 
 
 #: Below this size a set is a LESSON, not a paper, and `G11` must not run.
@@ -451,3 +463,85 @@ def guess_ev_report() -> dict[str, float]:
         "one_blank_9th": expected_ev(blanks=9),
         "ten_blanks": expected_ev(blanks=10),
     }
+
+
+def derivation_shape(derivation: str) -> str:
+    """The derivation with every integer replaced by `N`.
+
+    MEASURED 2026-10-02, and this is the whole measurement. Two items whose
+    derivations reduce to the same shape are **the same arithmetic** with
+    different numbers, which is the definition of one reasoning shape -- the
+    thing `G6` exists to prevent and cannot see, because `G6` fingerprints the
+    STEM.
+
+    Lesson 1, digit-masked:
+
+        L1-F  1000*10*2/100                 ->  N*N*N/N
+        L1-E  10000 + 10000*5*2/100         ->  N + N*N*N/N
+        L1-M  (1440*100/(8*3))/(2160*100/…) ->  (N*N/(N*N)) / (N*N/(N*N))
+        L1-H  12000 + 12000*10*2/100        ->  N + N*N*N/N   <-- SAME AS L1-E
+
+    Three of four. The HARD rung was EASY's arithmetic relabelled: changing only
+    its flags and nothing a learner sees dropped it 7.40 -> 2.50, the EASY tier.
+    So 66% of the hard item's difficulty was a DECLARED FLAG with nothing in the
+    derivation to prove it, and **no gate compared a flag to the derivation the
+    flag claims to describe.**
+    """
+    import re
+
+    return re.sub(r"\d+", "N", derivation)
+
+
+def _refuse_repeated_shapes(res: GateResult, items: list[Item]) -> None:
+    """G17 -- within a set, no two items may share a derivation shape.
+
+    **What this gate does and does not prove, stated once and plainly.**
+
+    It proves two items are not the same arithmetic. That is exact, and it is
+    the measurement `level-auditor` and `question-setter` each asked for
+    independently: `len({shape(i.derivation) for i in LESSON}) == 4`.
+
+    It does **NOT** prove `derivation_steps`, `needs_substitution` or
+    `insight_required` are true. Those are declarations about how many reasoning
+    steps a human takes and what they must notice. They cannot be read off a
+    string: `derive_level` charges `steps x 0.85 + 1.2 + 2.0`, and an item may
+    legitimately claim more steps than it has operators, because "steps" means
+    reasoning moves and not operations. `test_G17_does_not_claim_to_verify_the_
+    difficulty_flags` pins that admission so a later session cannot mistake G17
+    for the whole of level integrity.
+
+    Runs on the ADMITTED set, after `_enforce_mix` and `_refuse_predictable_keys`,
+    because it must judge the set that will actually be served.
+    """
+    if len(items) < 2:
+        return
+    seen: dict[str, str] = {}
+    clashes: list[str] = []
+    for it in items:
+        if not it.derivation:
+            continue
+        shape = derivation_shape(it.derivation)
+        first = seen.get(shape)
+        if first is not None:
+            clashes.append(
+                f"  {first} and {it.id} both reduce to {shape} -- "
+                f"'{first.split()[0]}' uses the same arithmetic as {it.id}, so "
+                f"the second one adds numbers rather than a step"
+            )
+        else:
+            seen[shape] = it.id
+    if not clashes:
+        return
+    shapes = {derivation_shape(i.derivation) for i in items if i.derivation}
+    res.refusals.append(Refusal(
+        gate="G17_derivation_shape_distinct",
+        item_id=items[0].id,
+        detail=(
+            f"{len(shapes)} distinct derivation shape(s) across {len(items)} "
+            f"items, so the ladder repeats an operation instead of adding one:\n"
+            + "\n".join(clashes)
+            + "\n  A rung must add an OPERATION. A new tier is reached by doing "
+              "something the rung below does not do, not by writing different "
+              "numbers into the same expression."
+        ),
+    ))
