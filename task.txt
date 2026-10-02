@@ -1,0 +1,284 @@
+===============================================================================
+TASK -- xat-practice
+Written end of session 2026-10-02, after a rename. Paste to a fresh mentor.
+Updated later the same day: D3/D4 accepted by the owner, D14 (build order)
+added, and the one doc-error count in the gate table fixed 13 -> 14.
+===============================================================================
+
+## 0. OBJECTIVE
+
+Take ONE student from "I don't know what simple interest is" to a XAT
+percentile they can defend, targeting the **80th-100th percentile band**.
+
+Shape: **one subtopic at four levels** (FOUNDATION -> EASY -> MEDIUM -> HARD),
+then timed mocks. Not full-syllabus coverage -- the owner asked for percentile
+focus, and coverage is padding here.
+
+The owner's loop, verbatim:
+    show the question + options -> learner selects -> right/wrong ->
+    step-by-step solution naming the misconception behind EVERY option they
+    did not pick.
+
+Standing rules are in AGENTS.md. The one that outranks the rest: **a wrong
+answer key actively teaches a wrong fact and the learner cannot detect it**, so
+the key is never model-asserted.
+
+Current wave: **Wave 1 landed** (solver, gates, weight model, Lesson 1, bundle,
+CLI). Waves 2+ are unbuilt.
+
+Use `.venv/bin/xat-practice` or `.venv/bin/python`. Never bare `python3`.
+
+
+## 1. THE RENAME — READ THIS FIRST
+
+Owner renamed the project directory on 2026-10-02:
+
+    xat_practise   ->   xat-practice        (hyphen)
+
+**The Python package keeps an UNDERSCORE** and could not do otherwise:
+
+    src/xat-practice/            <- project root
+    src/xat_practice/            <- importable package; `import xat-practice`
+                                    is not valid Python
+    pyproject [project] name     = "xat-practice"
+    console script               = xat-practice
+    coverage --include           = src/xat_practice/*.py   (package path)
+
+81 references were updated across 9 files. All four gates were re-run after the
+rename and are green.
+
+**THE RENAME BROKE THE VENV AND IT WILL BREAK YOURS.** Every console script in
+`.venv/bin/` had a shebang pointing at the now-nonexistent
+`/home/dipak/agentic/xat_practise/.venv/bin/python3`, so `mypy` died with
+
+    timeout: failed to execute process: No such file or directory
+
+which looks like a missing package and is not. The venv was deleted and
+recreated. **If you rename again, recreate the venv too:**
+
+    rm -rf .venv && uv venv --python 3.12
+    uv pip install -e . mypy pytest pytest-cov ruff
+
+
+## 2. GATE STATUS -- DO NOT TRUST THIS WITHOUT RE-RUNNING
+
+Last COMPLETED full gate, at the new path, this session:
+
+    161 passed
+    95.19% coverage on src/xat_practice/*.py
+    ruff clean, mypy clean on 9 source files
+    CLI smoke-tested: gates, build, ev, levels, shapes, weightage
+
+The four commands. ALL FOUR, not three:
+
+    .venv/bin/ruff check src tests
+    .venv/bin/mypy src
+    .venv/bin/python -m pytest -q --strict-markers --cov
+    .venv/bin/python -m coverage report \
+        --include="src/xat_practice/*.py" --fail-under=95 --precision=2
+
+The fourth is a SEPARATE command, not a coverage `include`, because one
+`include` cannot both scope the floor to our own package and leave the whole
+tree visible in the printed table. Scoping the printed table hides the
+population you most want to watch, with no error and no warning.
+
+`--cov` is in `addopts` in pyproject.toml, not only in the coverage command.
+Without it `pytest -q` writes NO coverage data and the fourth command reports
+whatever `.coverage` is on disk -- possibly hours stale -- as a fresh
+measurement. A floor reading stale data is WORSE than no floor, because it
+looks like a measurement. Do not remove `--cov` to speed the suite up.
+
+`--precision=2` is load-bearing.
+
+**Coverage has almost no headroom: 95.19% against a 95% floor.** Adding source
+without adding tests will fail the fourth command. This is the thing most likely
+to surprise the next session.
+
+
+## 3. WHAT EXISTS, AND WHAT IT GUARANTEES
+
+    AGENTS.md                 working rules; 4 load-bearing differences
+                              from the reference project
+    opencode.json             9 role agents, BUILT not hand-written
+    docs/DECISIONS.md         D1-D13, the gate spec, retired-with-reasons
+    docs/PEDAGOGY.md          what a good question is, as countable rules
+    src/xat_practice/
+      syllabus.py             weight model, 196 questions, self_check()
+                              closes to 28/yr
+      solver.py               RE-DERIVES the key by computation
+      items.py                schema, derived difficulty, LEVEL_RECIPES
+      gates.py                14 gates, all proven reachable
+      lesson1.py              Lesson 1: Simple Interest, 4 rungs
+      bundle.py               static bundle + paper/key file split
+      build_opencode.py       single source of the shared 10.8 KB block
+cli.py                8 verbs
+    tests/                    5 modules, 161 tests
+    out/lesson-01/            the built bundle (4 files)
+
+Lesson 1, all four ADMITTED, all keys RECOMPUTED (never asserted):
+
+    L1-F  foundation  score 1.25   Rs 200       1000*10*2/100
+    L1-E  easy        score 2.50   Rs 11,000    10000 + 10000*5*2/100
+    L1-M  medium      score 4.55   2 : 3        (1440*100/24)/(2160*100/24)
+    L1-H  hard        score 7.40   Rs 14,400    12000 + 12000*10*2/100
+
+The levels are DERIVED from structure, not requested. That is the direct answer
+to the owner's requirement that papers "not hallucinate this level of question".
+
+HOW TO SIT A LESSON:
+
+    xat-practice serve            # http://127.0.0.1:8000
+    xat-practice build            # rebuild the bundle
+    xat-practice gates            # per-gate refusal counts, population named
+
+A loopback static server is needed only because the browser blocks `fetch()` of
+a sibling JSON on `file://`. D10 still forbids a real server, a database and
+accounts.
+
+
+## 4. THE FOUR DEFECTS THAT MATTER MOST
+
+All found by RUNNING the thing. None was visible by reading it. Each is now a
+test named after what it disproves.
+
+1. **THE COMMIT BARRIER WAS THEATRE.** The first bundle had one loader for both
+   the stem and the key, so `answerkey.json` -- every key, every solution, every
+   misconception -- was in memory and in the network tab before the learner
+   committed a character. Every test on it PASSED, because each checked one
+   property and none checked the fetch path. Fixed by splitting `paper.json`
+   (loads on load) from `answerkey.json` (fetched inside `check()` only). The
+   key field is named `k`, not `key_index`, because a served script that NAMES
+   the answer field is one refactor from shipping it. Guard:
+   `test_paper_json_alone_cannot_mark_an_answer`.
+
+2. **`G11` DELETED THE HARD RUNG.** It apportions the 20-item PAPER mix; on 4
+   items that gave `{1,1,1,0}` and dropped HARD. The product's central claim,
+   killed by a paper-level rule. `MIX_ENFORCEMENT_FLOOR = 8`.
+
+3. **DISPLAY STRINGS ARE NOT ARITHMETIC.** All four Lesson 1 keys were REFUSED
+   on the first run because `Rs 200` and `2 : 3` do not parse as sympy. Worse,
+   `14,400` does not FAIL -- `sympify` returns the TUPLE `(14, 400)`, so a
+   thousands separator slips PAST the parse check. Hence `Item.option_values`
+   plus `G14_option_value_matches_label`.
+
+4. **THREE CRASHES ON BAD INPUT, all the same family.** `IndexError` in `run`
+   (killed a whole paper); `AttributeError` in `_value_visible_in_label`
+   (crashed on the exact input `G14` was built to catch); `ValueError` from
+   `zip(strict=True)` (killed every LOGIC and JUDGEMENT item).
+   **A gate that raises has silently become a gate that is not run.**
+
+Also retired, with reasons in docs/DECISIONS.md section 4: `HOLD` for a
+judgement key; `run(..., expected=n)`; the one-comparison `G10`; the flat +0.8
+near-miss bonus; `G11`'s defensive `kept.remove`.
+
+
+## 5. WHAT IS NOT BUILT -- and must not be reported as a defect
+
+- **`enumeration.py`.** `Stratum.LOGIC` returns `DELEGATED` and nothing
+  discharges it. A logic item is LABELLED unverified rather than verified,
+  which is the correct direction to be wrong in.
+- **The blind second call for JUDGEMENT.** Same reasoning. Prose has no solver.
+- **Mocks.** `QUANT_MOCK` (28Q) and `FULL_MOCK` (75Q) are SHAPES in `items.py`
+  with quotas. Nothing builds them, no timing, no marking, no result screen.
+- **PRACTICE (20 questions) and the full 75-question paper.** Unbuilt.
+- **No timer, no quadrant persistence, no attempt history, no analytics.**
+- **Lesson 1 is one subtopic of 40** trained in `syllabus.SUBTOPICS`. No claim
+  is made about the other 39.
+- **No LLM client.** There is no drafter. Items are authored as data, which is
+  correct for a hand-built corpus and is NOT the long-term generation path.
+- **No wall-clock or cost figures.** One lesson exists. Any per-paper estimate
+  would be a proxy wearing a measurement's clothes.
+
+**The bundle had been READ, not CLICKED -- until 2026-10-02.** It was first
+verified by asserting the files on disk and by reading the rendered flow. The
+owner is now sitting it at `http://127.0.0.1:8000/` (`xat-practice serve`).
+MEASURED by a live fetch on 2026-10-02, not by reading: `index.html`,
+`paper.json`, `answerkey.json`, `lesson.js` all 200, and `paper.json`'s per-item
+keys are exactly `[id, level, level_drivers, level_score, options, stem,
+stratum]` -- no key, no solution, no misconception. The commit barrier holds on
+the wire, which is the only place it can be tested. **It has served LESSON 1 only;
+there is no Geometry lesson to sit yet.**
+
+
+## 6. OWNER ITEMS -- NO ROLE MAY DECIDE THESE
+
+Both are explicitly the owner's. No ruling can supply them.
+
+- [x] **Are the D4 syllabus additions accepted as final?** CONFIRMED by the owner
+      2026-10-02. Added on evidence, all absent from the owner's own list of
+      **15 lines** (this file used to say "17-topic list"; 17 was `TOPICS`' own
+      size, and the error is corrected in D4 and AGENTS.md):
+      Data Interpretation (6.71 q/yr, the single largest block), Number System
+      (2.86), Inequalities, Graphs & Functions (new in 2026, 3 questions),
+      Venn & Sets, Data Sufficiency (appears EVERY year), Puzzle & Charts, and
+      a minimal slice of Probability & Combinatorics.
+      Also on record as EXCLUDED with reasons: trigonometry beyond
+      Pythagorean/heights, complex numbers, vectors & 3-D, matrices &
+      determinants, binomial, calculus, statistics.
+- [ ] **Rights posture.** Assumed to inherit the reference project's "private
+      cohort revision, not published". Assumed, never asked. **THE ONLY OWNER
+      ITEM STILL OPEN.**
+
+
+## 7. SUGGESTED NEXT ACTION
+
+In priority order, with the reason:
+
+1. **Sit Lesson 1 and report back.** `xat-practice serve`. Answer all four. The
+   specific question to answer: *did the HARD rung feel reachable from the
+   FOUNDATION rung, or did it feel arbitrary?* If it felt arbitrary, the
+   foundation item did not land and the next lesson should be built differently.
+   This is cheap and it is the only feedback loop in the product.
+
+2. **Lesson 2 on GEOMETRY, not Data Interpretation.** The owner chose this on
+   2026-10-02 and it is recorded as **D14**, together with the recommendation it
+   overrode (DI, 6.71 q/yr, largest block) and the reason the override is still
+   defensible: geometry is the **deepest dependency chain** in the syllabus and
+   a mock needs a ladder already walked. **The DI debt is deferred, not
+   cancelled** — after Lesson 2, DI is still the largest block with no lesson.
+   Reuse `lesson1.py` as the template and `test_lesson1.py` as the acceptance
+   criteria -- copy them, do not weaken them. Geometry's eight subtopics, in
+   dependency order: `similarity-and-area-ratios`,
+   `angle-bisector-and-cevian`, `triangle-angle-sine-rule`, `circle-tangents`,
+   `circle-power-of-a-point`, `cyclic-quadrilateral`, `polygon-angle-sums`,
+   `mensuration-2d-3d`, `coordinate-geometry`.
+
+3. **A 28-question quant mock**, using `QUANT_MOCK.quota()`
+   `{foundation 3, easy 7, medium 11, hard 7}` with negative marking live.
+   This needs: a timer, a result screen, and the -0.10 blank penalty after the
+   8th blank modelled. Nothing of that exists. **Sequence is fixed by D14:**
+   lesson first, then mock, then the full paper. No mock for a subtopic whose
+   lesson has not been sat.
+
+4. **`enumeration.py`**, so LOGIC items stop being merely labelled.
+
+The single most valuable thing to preserve: **the levels are derived and the
+keys are recomputed.** If a future session asks a model for a difficulty level,
+or accepts a key the solver did not confirm, the project's central claim is
+gone and every guarantee above becomes a claim about a model's opinion.
+
+
+## 8. NUMBERS YOU MAY QUOTE
+
+Every one re-derivable by running the four commands or a CLI verb.
+
+    XAT 2026, from XLRI's own notification
+      95 questions, 180 min. Part 1 = 170 min, QA&DI 28 + VA&LR 26 + DM 21
+      = 75, and NO sectional time limit. Part 2 = GK 20 in 10 min, excluded
+      from percentile, no negative marking. FIVE options. +1 correct,
+      -0.25 incorrect, -0.10 per unattempted AFTER THE FIRST EIGHT. On-screen
+      calculator in QA&DI. Essay moved to GD/PI.
+
+    Marking (xat-practice ev)
+      guess, 5 options, -0.25   EV = +0.0000   the paper's equilibrium
+      guess, 4 options, -0.25   EV = +0.0625   a 4-option paper PAYS you to
+                                                guess -- why the reference
+                                                project's D5/D6 do not carry
+      the 9th blank, unattempted EV = -0.1000   strictly worse than guessing
+
+    Weight model (xat-practice weightage)
+      196 questions = 7 papers x 28, 2020-2026. Secondary source. Closes to
+      28 every year or self_check() raises.
+
+    Subtopics: 40 trained, 90 named traps. By stratum: 37 quant, 3 logic,
+      0 judgement.

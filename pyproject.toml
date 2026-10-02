@@ -1,0 +1,49 @@
+[project]
+name = "xat-practice"
+version = "0.1.0"
+description = "XAT 2026 training from foundation to mock: items are gated, keys are recomputed, difficulty is derived"
+requires-python = ">=3.12"
+dependencies = [
+    "sympy>=1.13",      # THE KEY IS RE-DERIVED BY COMPUTATION. solver.py is the
+                        # reason a percent claim is a statement about code and
+                        # not about a model's opinion (AGENTS.md, D1).
+    "pydantic>=2.9",
+    "requests>=2.32",
+    "python-dotenv>=1.0",
+]
+
+[project.scripts]
+xat-practice = "xat_practice.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.2,<0.13.0"]
+build-backend = "uv_build"
+
+# `--cov` belongs in addopts, NOT only in the coverage command. If it is absent
+# here, `pytest -q` writes NO coverage data and the coverage command then
+# reports whatever `.coverage` happens to be on disk -- possibly hours stale --
+# and reports it as a fresh measurement. That defect is the reference project's
+# F1 and it was quoted as current by two separate sessions. It ships in the
+# FIRST COMMIT. Do not remove it to speed the suite up.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers --cov=src/xat_practice --cov-report=term-missing"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "ARG", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src/xat_practice"]
+
+[tool.coverage.report]
+precision = 2
+[[tool.mypy.overrides]]
+module = ["sympy.*"]
+ignore_missing_imports = true

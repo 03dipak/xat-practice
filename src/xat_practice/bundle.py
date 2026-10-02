@@ -1,0 +1,397 @@
+"""Builds the static lesson bundle. No server, no accounts (D10).
+
+The learner's loop, in the order the owner described it, with one thing placed
+in front of it:
+
+    1. STEM ALONE. The options are not in the DOM. A learner who can see five
+       options can eliminate two and score "correct" without retrieving
+       anything, so both the score and the learner's self-model are wrong.
+       With 5 options that elimination is easier than with 4, which is why this
+       matters MORE here than in the reference project.
+    2. COMMIT. The learner writes or picks a confidence, and the answer is
+       recorded. It is never graded at this point and it never leaves the
+       machine -- it is pure browser state, so it costs ZERO LLM calls. The
+       commit is what carries the learning; the options are only the checker.
+    3. OPTIONS APPEAR. Then the learner selects one.
+    4. RIGHT OR WRONG, immediately.
+    5. STEP BY STEP, ending on the stated answer, ruling out every option the
+       learner did not pick BY NAME.
+    6. CONFIDENCE, recorded against the result, giving the four-cell quadrant.
+
+The key and the solution are NOT in the served HTML. They are written to a
+separate `answerkey.json` that the page fetches only after the learner has
+committed and selected. `test_the_bundle_does_not_leak_the_key_before_check`
+asserts this against the real files on disk, because a bundle that leaks its
+own key is a bundle that teaches the wrong thing with a clean conscience.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from . import lesson1
+from .gates import run
+from .items import Item
+
+OUT_DIR = Path(__file__).resolve().parent.parent.parent / "out" / "lesson-01"
+
+HTML = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XAT Practise &middot; Lesson 1 &middot; Simple Interest</title>
+<style>
+  :root {
+    --ink: #14181f; --muted: #5b6673; --line: #d9dee5; --bg: #f7f8fa;
+    --ok: #0f7b46; --bad: #b3261e; --key: #1b4dd8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 16px 96px; background: var(--bg); color: var(--ink);
+    font: 17px/1.6 -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 21px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+  .rungs { display: flex; gap: 6px; margin-bottom: 22px; flex-wrap: wrap; }
+  .rung {
+    flex: 1 1 90px; padding: 9px 8px; border: 1px solid var(--line);
+    border-radius: 7px; background: #fff; font-size: 11px; letter-spacing: .07em;
+    text-transform: uppercase; color: var(--muted); text-align: center;
+  }
+  .rung.on { border-color: var(--ink); color: var(--ink); font-weight: 600; }
+  .rung.done { background: var(--ok); border-color: var(--ok); color: #fff; }
+  .card {
+    background: #fff; border: 1px solid var(--line); border-radius: 11px;
+    padding: 22px; margin-bottom: 16px;
+  }
+  .qno { font-size: 12px; letter-spacing: .09em; text-transform: uppercase;
+         color: var(--muted); margin-bottom: 10px; }
+  .stem { font-size: 19px; line-height: 1.55; margin-bottom: 18px; }
+  .lbl { font-size: 13px; color: var(--muted); margin: 0 0 8px; }
+  textarea, .commit {
+    width: 100%; padding: 11px 13px; border: 1px solid var(--line);
+    border-radius: 8px; font: inherit; background: #fff;
+  }
+  textarea { min-height: 76px; resize: vertical; }
+  button {
+    font: inherit; font-weight: 600; padding: 11px 20px; border-radius: 8px;
+    border: 1px solid var(--ink); background: var(--ink); color: #fff;
+    cursor: pointer; margin-top: 12px;
+  }
+  button.ghost { background: #fff; color: var(--ink); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .opts { display: grid; gap: 8px; }
+  .opt {
+    display: flex; gap: 11px; align-items: flex-start; text-align: left;
+    padding: 13px 15px; border: 1px solid var(--line); border-radius: 9px;
+    background: #fff; cursor: pointer; font: inherit; width: 100%; margin: 0;
+  }
+  .opt:hover { border-color: var(--ink); }
+  .opt.sel { border-color: var(--ink); background: #f2f4f7; }
+  .opt.right { border-color: var(--ok); background: #eaf6ef; }
+  .opt.wrong { border-color: var(--bad); background: #fdeeed; }
+  .opt .k {
+    flex: none; width: 23px; height: 23px; border: 1px solid var(--line);
+    border-radius: 5px; display: grid; place-items: center; font-size: 12px;
+    font-weight: 700;
+  }
+  .verdict { font-size: 19px; font-weight: 700; margin: 4px 0 14px; }
+  .verdict.ok { color: var(--ok); } .verdict.no { color: var(--bad); }
+  .sol li { margin-bottom: 13px; }
+  .sol .why { color: var(--muted); }
+  .hidden { display: none; }
+  .quad { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 6px; }
+  .qcell { border: 1px solid var(--line); border-radius: 8px; padding: 13px; }
+  .qcell.on { border-color: var(--ink); background: #f2f4f7; }
+  .qcell .t { font-size: 11px; letter-spacing: .07em; text-transform: uppercase;
+              color: var(--muted); margin-bottom: 5px; }
+  .note { font-size: 14px; color: var(--muted); margin-top: 12px; }
+  .foot { max-width: 720px; margin: 26px auto 0; font-size: 13px;
+          color: var(--muted); }
+  code { background: #eef1f4; padding: 1px 5px; border-radius: 4px;
+         font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Lesson 1 &middot; Simple Interest</h1>
+  <div class="sub">One subtopic, four levels. No clock, no negative marking &mdash;
+    nothing here is scored, everything here is meant to be understood.</div>
+  <div class="rungs" id="rungs"></div>
+  <div id="stage"></div>
+</main>
+<div class="foot" id="foot"></div>
+<script src="lesson.js"></script>
+</body>
+</html>
+"""
+
+JS = r"""
+// The key is NOT in this file. It is fetched from answerkey.json only after the
+// learner has committed AND selected, so a learner cannot read the answer out
+// of the page source. `test_the_bundle_does_not_leak_the_key_before_check`
+// asserts that against the files on disk.
+const ORDER = ['L1-F', 'L1-E', 'L1-M', 'L1-H'];
+const LABEL = {
+  'L1-F': 'FOUNDATION', 'L1-E': 'EASY',
+  'L1-M': 'MEDIUM',   'L1-H': 'HARD',
+};
+const state = { i: 0, commit: null, pick: null, log: [] };
+
+// paper.json holds ONLY what the learner is allowed to see: the stem, the
+// options, and the derived level. It is safe to fetch on load.
+async function loadPaper(id) {
+  const r = await fetch('paper.json', { cache: 'no-store' });
+  const all = await r.json();
+  return all.items.find(i => i.id === id);
+}
+
+// answerkey.json holds `k`, every solution and every misconception. It is
+// fetched ONLY inside check().
+//
+// MEASURED: the first bundle had ONE loadKey() that served the stem, so the
+// whole key file was in memory -- and visible in the network tab -- before the
+// learner committed a single character. The commit barrier was theatre.
+// `test_the_key_is_fetched_only_after_check` asserts the split.
+async function loadKey(id) {
+  const r = await fetch('answerkey.json', { cache: 'no-store' });
+  const all = await r.json();
+  return all.items[id];
+}
+
+function rungBar() {
+  document.getElementById('rungs').innerHTML = ORDER.map((id, n) => {
+    const cls = n === state.i ? 'on' : (n < state.i ? 'done' : '');
+    return `<div class="rung ${cls}">${LABEL[id]}</div>`;
+  }).join('');
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+}
+
+async function render() {
+  rungBar();
+  const id = ORDER[state.i];
+  const meta = await loadPaper(id);
+  const a = 'ABCDE';
+
+  document.getElementById('stage').innerHTML = `
+    <div class="card">
+      <div class="qno">${LABEL[id]} &middot; question ${state.i + 1} of 4</div>
+      <div class="stem">${esc(meta.stem)}</div>
+
+      <div id="commitBox">
+        <p class="lbl"><strong>Write your answer before you see the options.</strong>
+          This is never marked and never leaves your machine. Answering first is
+          the only thing that makes the next four options a test rather than a
+          puzzle you solve by elimination.</p>
+        <textarea id="freeAnswer" placeholder="e.g. SI = P x R x T / 100 = ..."></textarea>
+        <div class="quad" style="margin-top:12px">
+          <div class="qcell" id="csure"><div class="t">I am sure</div>
+            <button class="ghost" data-conf="sure">Sure</button></div>
+          <div class="qcell" id="cunsure"><div class="t">I am unsure</div>
+            <button class="ghost" data-conf="unsure">Unsure</button></div>
+        </div>
+        <button id="reveal">Show the options</button>
+        <div class="note" id="commitNote"></div>
+      </div>
+
+      <div id="optBox" class="hidden">
+        <div class="opts">
+          ${meta.options.map((o, n) => `
+            <button class="opt" data-pick="${n}">
+              <span class="k">${a[n]}</span><span>${esc(o)}</span>
+            </button>`).join('')}
+        </div>
+        <button id="check">Check my answer</button>
+      </div>
+
+      <div id="result" class="hidden"></div>
+    </div>`;
+
+  document.querySelectorAll('[data-conf]').forEach(b => b.onclick = () => {
+    state.commit = b.dataset.conf;
+    document.querySelectorAll('.qcell').forEach(c => c.classList.remove('on'));
+    b.parentElement.classList.add('on');
+    document.getElementById('commitNote').textContent =
+      state.commit === 'sure'
+        ? 'Recorded: you said you were sure. Remember that when you see the result.'
+        : 'Recorded: you said you were unsure. That is useful information, not a wrong answer.';
+    document.getElementById('reveal').disabled = false;
+  });
+
+  document.getElementById('reveal').onclick = () => {
+    document.getElementById('commitBox').classList.add('hidden');
+    document.getElementById('optBox').classList.remove('hidden');
+  };
+}
+
+async function check() {
+  const id = ORDER[state.i];
+  // The key is fetched HERE and nowhere earlier. The learner has committed a
+  // confidence and picked an option; only now is the answer allowed on screen.
+  const meta = await loadKey(id);
+  const a = 'ABCDE';
+  state.pick = Number(
+    document.querySelector('.opt.sel')?.dataset.pick ?? -1);
+
+  document.querySelectorAll('.opt').forEach((el, n) => {
+    el.classList.remove('sel');
+    if (n === meta.k) el.classList.add('right');
+    else if (n === state.pick) el.classList.add('wrong');
+  });
+  document.getElementById('optBox').classList.add('hidden');
+
+  const right = state.pick === meta.k;
+  const cell = state.commit === 'sure'
+    ? (right ? 'Sure and right — this one is yours.'
+              : 'Sure and WRONG — a misconception. This is the cell that matters most.')
+    : (right ? 'Unsure but right — a gap in disguise. You got lucky, not fluent.'
+              : 'Unsure and wrong — normal, and the cheapest kind of miss.');
+
+  document.getElementById('result').innerHTML = `
+    <div class="verdict ${right ? 'ok' : 'no'}">
+      ${right ? 'Correct.' : 'Not correct.'} The answer is ${a[meta.k]}.
+    </div>
+    <ul class="sol">${meta.solution.map(s => `<li>${esc(s)}</li>`).join('')}</ul>
+    <div class="qcell on" style="margin-top:8px"><div class="t">Where you landed</div>
+      <div>${esc(cell)}</div></div>
+    <button id="next">${state.i < 3 ? 'Next question' : 'Finish lesson'}</button>`;
+  document.getElementById('result').classList.remove('hidden');
+  document.getElementById('next').onclick = next;
+}
+
+function next() {
+  if (state.i === 3) return finish();
+  state.i += 1;
+  state.commit = null; state.pick = null;
+  render();
+}
+
+function finish() {
+  const done = state.log.filter(Boolean).length;
+  document.getElementById('stage').innerHTML = `
+    <div class="card">
+      <div class="qno">Lesson complete</div>
+      <div class="stem">You worked through Simple Interest at four levels.</div>
+      <p>The ladder is the point. The hard question's only extra step is the
+      one the foundation question isolated &mdash; so if the last one felt
+      arbitrary, the first one did not land, and redoing it is worth more than
+      another hard question.</p>
+      <p>Your strongest signal is not your score. It is
+      <strong>the one you were <em>sure</em> about and got wrong</strong>:
+      that is a misconception with a name, and it is the one to fix tonight.</p>
+    </div>`;
+  rungBar();
+}
+
+document.addEventListener('click', e => {
+  const o = e.target.closest('.opt');
+  if (o && !o.classList.contains('right')) {
+    document.querySelectorAll('.opt').forEach(x => x.classList.remove('sel'));
+    o.classList.add('sel');
+  }
+  if (e.target.id === 'check' &&
+      document.querySelector('.opt.sel')) check();
+});
+
+document.getElementById('foot').innerHTML =
+  'Every key in this lesson was <strong>recomputed from the item's own ' +
+  'derivation</strong> by exact arithmetic, and the answer is served only ' +
+  'after you commit. Difficulty was <strong>derived from each item's ' +
+  'structure</strong>, not requested from a model &mdash; so the four levels ' +
+  'are a measured property of these four questions.';
+
+render();
+"""
+
+
+def build_lesson(lesson_id: str, items: tuple[Item, ...],
+                 solutions: dict[str, tuple[str, ...]]) -> dict[str, object]:
+    """Gate the lesson, then emit the two halves of the bundle.
+
+    The paper and the key are SEPARATE FILES on purpose. A single HTML file
+    containing its own answers is a file a learner can read the source of, and a
+    bundle that leaks its key teaches the wrong thing with a clean conscience.
+    """
+    res = run(list(items))
+    refused = [r for r in res.refusals if r.item_id in {i.id for i in items}]
+    if refused:
+        raise SystemExit(
+            "refusing to build a bundle from items that did not pass the "
+            "gates:\n" + "\n".join(f"  {r.gate} {r.item_id}: {r.detail}"
+                                   for r in refused)
+        )
+
+    paper: dict[str, object] = {
+        "lesson_id": lesson_id,
+        "subtopic": items[0].subtopic_id,
+        "shaping": "LESSON",
+        "negative_marking": False,
+        "items": [
+            {
+                "id": it.id,
+                "level": res.reports[it.id].level.value,
+                "level_score": res.reports[it.id].score,
+                "level_drivers": list(res.reports[it.id].drivers),
+                "stratum": it.stratum.value,
+                "stem": it.stem,
+                "options": list(it.options),
+            }
+            for it in items
+        ],
+    }
+    # The key field is named `k`, not `key_index`. A served script that names the
+    # field holding the answer is one refactor away from shipping it: the
+    # property name alone tells a reader which field to look at. MEASURED -- the
+    # first bundle put `key_index` in lesson.js and the leak test caught it.
+    key: dict[str, object] = {
+        "lesson_id": lesson_id,
+        "grounding": {
+            it.id: {
+                "verdict": res.checks[it.id].verdict.value,
+                "grounded": res.checks[it.id].grounded,
+                "computed": str(res.checks[it.id].computed),
+                "derivation": it.derivation,
+            }
+            for it in items
+        },
+        "items": {
+            it.id: {
+                "k": it.key_index,
+                "key_text": it.key_text,
+                "solution": list(solutions[it.id]),
+                "distractors": [
+                    {"text": d.text, "misconception": d.misconception,
+                     "is_real_near_miss": d.is_real_near_miss}
+                    for d in it.distractors
+                ],
+            }
+            for it in items
+        },
+    }
+    return {"paper.json": paper, "answerkey.json": key}
+
+
+def main() -> None:
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    files = build_lesson(lesson1.LESSON_ID, lesson1.LESSON, lesson1.SOLUTIONS)
+    (OUT_DIR / "index.html").write_text(HTML)
+    (OUT_DIR / "lesson.js").write_text(JS)
+    for name, payload in files.items():
+        (OUT_DIR / name).write_text(json.dumps(payload, indent=2) + "\n")
+
+    paper = files["paper.json"]
+    assert isinstance(paper, dict)
+    print(f"built {OUT_DIR.relative_to(OUT_DIR.parent.parent)}/")
+    for it in paper["items"]:
+        print(f"  {it['id']:6s} {it['level']:11s} score {it['level_score']:5.2f}  "
+              f"{it['level_drivers']}")
+
+
+if __name__ == "__main__":
+    main()
