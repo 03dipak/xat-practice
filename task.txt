@@ -200,9 +200,10 @@ the wire, which is the only place it can be tested. **It has served LESSON 1 onl
 there is no Geometry lesson to sit yet.**
 
 
-## 6. OWNER ITEMS -- NO ROLE MAY DECIDE THESE
+## 6. OWNER ITEMS -- BOTH NOW CLOSED, 2026-10-02
 
-Both are explicitly the owner's. No ruling can supply them.
+Both were explicitly the owner's. No ruling could supply them. Both are now
+decided rather than assumed, which is why they are recorded here and in D15.
 
 - [x] **Are the D4 syllabus additions accepted as final?** CONFIRMED by the owner
       2026-10-02. Added on evidence, all absent from the owner's own list of
@@ -215,9 +216,12 @@ Both are explicitly the owner's. No ruling can supply them.
       Also on record as EXCLUDED with reasons: trigonometry beyond
       Pythagorean/heights, complex numbers, vectors & 3-D, matrices &
       determinants, binomial, calculus, statistics.
-- [ ] **Rights posture.** Assumed to inherit the reference project's "private
-      cohort revision, not published". Assumed, never asked. **THE ONLY OWNER
-      ITEM STILL OPEN.**
+- [x] **Rights posture. DECIDED, not assumed: PUBLISHED.** The inherited posture
+      was "private cohort revision, not published", and it was flagged as an
+      assumption because it had never been asked. The repository was then found
+      to be PUBLIC (`"private": false`), so a routine push would have published
+      the work as a side effect of a version-control command. The owner was told
+      and chose to publish. **D15.** Nobody may re-open this without asking.
 
 
 ## 7. SUGGESTED NEXT ACTION

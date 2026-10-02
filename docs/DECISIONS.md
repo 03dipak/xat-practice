@@ -257,6 +257,30 @@ debt is deferred, not cancelled.
 has not been sat. A mock on an unwalked ladder measures guessing, which is the
 thing `PEDAGOGY.md` §1 exists to prevent.
 
+### D15 — The rights posture is PUBLISHED, and the owner decided it
+
+**Ruled 2026-10-02, by the owner.** This closes the last open owner item.
+
+The posture was inherited as an *assumption* — "private cohort revision, not
+published" — and it was labelled an assumption because nobody had ever asked. The
+repository `github.com/03dipak/xat-practice` was then created **public**
+(MEASURED: `api.github.com/repos/03dipak/xat-practice` returns
+`"private": false`), and pushing there would have turned the assumption into a
+publication by accident.
+
+The owner was told exactly that, and chose to publish. So the posture is now:
+
+- **PUBLISHED**, not private. Anyone may read the lessons, the weight model and
+  this ledger.
+- Consequence accepted knowingly: a public repo is indexed by search engines, and
+  changing visibility afterwards does not un-index what was already crawled.
+
+**Why it is written down at all.** An assumption that survives unasked becomes a
+fact nobody chose. This one was nearly that: a routine `git push` would have made
+the product's rights posture a side effect of a version-control command. The
+distinction between *assumed* and *decided* is the entire reason the item was
+tracked, and it cost one question to keep.
+
 ---
 
 ## 2. Gate specification
@@ -313,11 +337,9 @@ before `G2` could refuse the item. *Measured during the build.* Now covered by
   files on disk and by reading the rendered flow. Nobody has yet answered all
   four questions in a browser and reported what it felt like, which is the
   `viewer` role's first job and the one thing a test cannot do.
-- **Owner items outstanding — ONE left.** The D4 additions were **confirmed by
-  the owner on 2026-10-02** and are no longer open. Still unasked: whether the
-  reference project's `D9`-style rights posture (private revision, not
-  published) carries over. It is assumed to, and has not been asked. One open
-  item, not two.
+- **Owner items: NONE open.** The D4 additions were **confirmed by the owner on
+  2026-10-02**. The rights posture was **decided, not assumed**, on 2026-10-02:
+  see **D15 — published**. Do not reopen either.
 - **Geometry is next, not Data Interpretation.** See D14. Geometry is **P1 at
   4.57 q/yr**; DI is **P1 at 6.71 q/yr** and is now the largest block with no
   lesson written against it. That debt is deferred, not closed.

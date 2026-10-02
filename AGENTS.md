@@ -152,6 +152,12 @@ teach.
   mock, then the full paper (D14)** — overriding the recommendation that Data
   Interpretation (6.71 q/yr, the largest block) go first. Do not reopen the
   order without saying so.
+- **The rights posture is PUBLISHED, and that is a decision, not an oversight.**
+  `github.com/03dipak/xat-practice` is public and the owner chose that on
+  2026-10-02 (**D15**), after being told the inherited posture was an unasked
+  assumption and that a routine `git push` would have published the work as a
+  side effect of a version-control command. Do not treat publication as an
+  accident to be cleaned up, and do not re-open it without asking.
 - **The model ignores a requested difficulty level.** Inherited MEASUREMENT from
   the reference project: requesting `Apply` then `Analyse` returned the
   identical stem on 4 of 6 items. So `derive_level` computes the tier from
