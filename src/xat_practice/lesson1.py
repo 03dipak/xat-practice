@@ -93,9 +93,16 @@ FOUNDATION = Item(
         ),
         Distractor(
             text="Rs 120",
-            misconception="the percentage left un-divided by 100, so 1,000 x "
-                          "10 x 2 was never scaled down. Forgetting that a rate "
-                          "written as 10 still owes a division",
+            # MEASURED 2026-10-02: this text said "the percentage left
+            # un-divided by 100, so 1,000 x 10 x 2 was never scaled down", and
+            # 1,000 x 10 x 2 is 20,000 -- not 120. The stated cause did not
+            # produce the option, which `key-auditor` did not catch and which
+            # every gate had passed. The move that DOES produce 120 is adding
+            # the rate and the time instead of multiplying them.
+            misconception="the rate and the time ADDED instead of multiplied, so "
+                          "1000 x (10 + 2) / 100 = 120. On a two-year sum, 10 and "
+                          "2 look like neighbours on the page and an addition "
+                          "reads as naturally as a multiplication",
             is_real_near_miss=False,
         ),
     ),
@@ -116,13 +123,13 @@ EASY = Item(
     stratum=Stratum.QUANT,
     stem="Rs 10,000 is invested at 5% per annum simple interest. What is the "
          "amount owed after 2 years?",
-    options=("Rs 1,000", "Rs 11,000", "Rs 10,250", "Rs 11,025", "Rs 10,200"),
+    options=("Rs 1,000", "Rs 11,000", "Rs 10,500", "Rs 11,025", "Rs 12,000"),
     option_values=(
         "1000",
         "11000",
-        "10250",
+        "10500",
         "11025",
-        "10200",
+        "12000",
     ),
     key_index=1,
     derivation="10000 + 10000*5*2/100",
@@ -143,15 +150,24 @@ EASY = Item(
             is_real_near_miss=True,
         ),
         Distractor(
-            text="Rs 10,250",
+            # MEASURED 2026-10-02: this was Rs 10,250 while both the
+            # misconception and the step-by-step said the move is 10,000 x 5 / 100,
+            # which is 10,500. A digit transposition in the option, the same
+            # disease as Rs 14,700. The option now equals the move it names.
+            text="Rs 10,500",
             misconception="the rate applied once instead of for the full 2 "
-                          "years, i.e. the time count halved",
+                          "years, i.e. the time count dropped, so 10,000 x 5 / 100 "
+                          "= 500 and not the full 1,000",
             is_real_near_miss=True,
         ),
         Distractor(
-            text="Rs 10,200",
+            # MEASURED 2026-10-02: this was Rs 10,200, but the move its own
+            # misconception names -- the 5 read as 10 -- gives 10,000 + 2,000 =
+            # 12,000. Four options in this lesson had an explanation that did
+            # not produce them, and all four had passed every gate.
+            text="Rs 12,000",
             misconception="the 5 divided by 10 rather than 100, so the rate "
-                          "was read as 10%",
+                          "was read as 10% and the interest doubled to 2,000",
             is_real_near_miss=True,
         ),
     ),
@@ -173,13 +189,13 @@ MEDIUM = Item(
     stem="A sum earns simple interest of Rs 1,440 at 8% per annum for 3 years. "
          "Another sum earns simple interest of Rs 2,160 at 12% per annum for "
          "2 years. What is the ratio of the first sum to the second?",
-    options=("8 : 9", "1 : 2", "2 : 3", "3 : 2", "4 : 3"),
+    options=("8 : 9", "1 : 1", "2 : 3", "1 : 2", "3 : 2"),
     option_values=(
         "8/9",
-        "1/2",
+        "1",
         "2/3",
+        "1/2",
         "3/2",
-        "4/3",
     ),
     key_index=2,
     derivation="(1440*100/(8*3)) / (2160*100/(12*2))",
@@ -206,9 +222,26 @@ MEDIUM = Item(
             is_real_near_miss=True,
         ),
         Distractor(
-            text="4 : 3",
-            misconception="the ratio 1440 : 2160 simplified differently, i.e. "
-                          "the interest ratio inverted but not simplified",
+            # MEASURED 2026-10-02 by `key-auditor`, and confirmed by hand: the
+            # option this replaces was 4 : 3, whose stated cause was "the
+            # interest ratio inverted but not simplified". That is
+            # ARITHMETICALLY IMPOSSIBLE -- 2160 : 1440 is 3 : 2 already in lowest
+            # terms, so there is no unsimplified form to stop at -- and no ratio
+            # of 1440 and 2160 equals 4 : 3 at all. A distractor that cannot be
+            # REACHED is worse than none: a learner cannot rule it out, and the
+            # explanation teaches a false rule.
+            #
+            # 1 : 1 is reachable and is a real mistake. Both sums have r x t = 24,
+            # so 1,440 / 6,000 and 2,160 / 9,000 are BOTH 6/25, and a learner who
+            # DIVIDES each interest by its principal instead of recovering the
+            # principal gets a clean 1 : 1. The fact that the two rates coincide
+            # is what makes this trap sharp, and it is the same coincidence that
+            # weakens this item -- see the note in SOLUTIONS["L1-M"].
+            text="1 : 1",
+            misconception="each interest divided by its OWN principal instead of "
+                          "the principal recovered from the formula, so "
+                          "1440/6000 and 2160/9000 both came out 6/25 and the "
+                          "ratio flattened to 1 : 1",
             is_real_near_miss=True,
         ),
     ),
@@ -232,13 +265,13 @@ HARD = Item(
     stem="A debt of Rs 12,000 is repaid in two equal annual instalments, and "
          "simple interest at 10% per annum is charged for the 2 years on the "
          "whole amount. The total repaid is:",
-    options=("Rs 12,000", "Rs 9,600", "Rs 7,200", "Rs 14,400", "Rs 14,700"),
+    options=("Rs 12,000", "Rs 9,600", "Rs 7,200", "Rs 14,400", "Rs 14,520"),
     option_values=(
         "12000",
         "9600",
         "7200",
         "14400",
-        "14700",
+        "14520",
     ),
     key_index=3,
     derivation="12000 + 12000*10*2/100",
@@ -264,9 +297,15 @@ HARD = Item(
             is_real_near_miss=True,
         ),
         Distractor(
-            text="Rs 14,700",
-            misconception="the rate read as 10% per YEAR compounding onto a "
-                          "falling balance, 12000x1.1^2, instead of simple "
+            # MEASURED 2026-10-02 by `key-auditor`, and confirmed by hand: this
+            # was Rs 14,700, while its own stated cause, 12000 x 1.1^2, is
+            # 14,520. No clean rule reaches 14,700 -- it needs r x t = 0.225.
+            # The lesson handed the learner the arithmetic for one number while
+            # labelling a different one, so a learner who followed the lesson
+            # arrived at 14,520 and could not see why it had been rejected.
+            text="Rs 14,520",
+            misconception="the rate read as 10% per YEAR compounding, "
+                          "12000 x 1.1 x 1.1 = 14,520, instead of simple "
                           "interest on the full sum for 2 years",
             is_real_near_miss=True,
         ),
@@ -298,8 +337,10 @@ SOLUTIONS: dict[str, tuple[str, ...]] = {
         "Why Rs 1,200 is wrong: 1,000 + 200. That is the AMOUNT, not the "
         "interest. Read the noun the question uses: it asks what interest is "
         "EARNED, so the principal is not part of the answer.",
-        "Why Rs 120 is wrong: 1,000 x 10 x 2 with no /100. A rate written as 10 "
-        "still owes one division by 100.",
+        "Why Rs 120 is wrong: 1,000 x (10 + 2) / 100 = 120. The rate and the "
+        "time were ADDED. On a two-year sum, 10 and 2 sit near each other on the "
+        "page and an addition reads as naturally as a multiplication -- the "
+        "formula needs 10 x 2 = 20, and 10 + 2 = 12 silently halves the time.",
     ),
     "L1-E": (
         "Same formula, then one more step: an amount is the principal PLUS the "
@@ -311,13 +352,14 @@ SOLUTIONS: dict[str, tuple[str, ...]] = {
         "interest, and the difference from 11,000 is only 25 -- which is exactly "
         "why it is dangerous. It feels close enough to be right. Simple "
         "interest never multiplies the principal by (1 + r) to the power t.",
-        "Why Rs 10,200 is wrong: 10,000 + 10,000 x 10 x 2 / 100. The 5 was "
-        "divided by 10 instead of 100, so the rate was read as 10%.",
+        "Why Rs 12,000 is wrong: 10,000 + 10,000 x 10 x 2 / 100 = 12,000. The "
+        "5 was divided by 10 instead of 100, so the rate was read as 10% and the "
+        "interest doubled.",
         "Why Rs 1,000 is wrong: that is the interest, correctly computed, and "
         "then the principal was never added. The question asked for an amount.",
-        "Why Rs 10,250 is wrong: 10,000 + 10,000 x 5 / 100. The 5% was applied "
-        "for one year only, so the 2 in the formula was dropped. If you find "
-        "yourself using only one of the years, check the time you read.",
+        "Why Rs 10,500 is wrong: 10,000 + 10,000 x 5 / 100 = 10,500. The 5% was "
+        "applied for one year only, so the 2 in the formula was dropped. If you "
+        "find yourself using only one of the years, check the time you read.",
     ),
     "L1-M": (
         "The insight: the ratio of two INTERESTS is not the ratio of two "
@@ -337,10 +379,11 @@ SOLUTIONS: dict[str, tuple[str, ...]] = {
         "small screen, and this is the error. Keep the brackets.",
         "Why 1 : 2 is wrong: 2,160 x 100 / 18 = 12,000 by the same collapse, so "
         "the second principal came out too big and the ratio too small.",
-        "Why 4 : 3 is wrong: the interest ratio inverted, 1,440 : 2,160, but "
-        "left unsimplified and misread. Compare it to 3 : 2, which is the same "
-        "mistake stated correctly -- the point is that neither is the ratio of "
-        "the PRINCIPALS.",
+        "Why 1 : 1 is wrong: 1,440 / 6,000 and 2,160 / 9,000 are both 6/25, "
+        "because BOTH sums have a rate-time product of 24. Dividing an interest "
+        "by its own principal compares the two RATES, and the two rates happen "
+        "to be equal here -- which is exactly why this item is a trap and not a "
+        "shortcut.",
     ),
     "L1-H": (
         "The insight: simple interest belongs to the WHOLE sum for the WHOLE "
@@ -361,9 +404,10 @@ SOLUTIONS: dict[str, tuple[str, ...]] = {
         "Why Rs 12,000 is wrong: instalments being equal means equal PAYMENTS. "
         "It does not mean the interest is zero, and it does not mean the "
         "principal is all that is owed.",
-        "Why Rs 14,700 is wrong: 12,000 x 1.1 x 1.1, i.e. the rate compounded "
-        "onto a single balance. Simple interest is 12,000 x 10 x 2 / 100 with "
-        "no compounding, however the debt happens to be paid off.",
+        "Why Rs 14,520 is wrong: 12,000 x 1.1 x 1.1 = 14,520, i.e. the rate "
+        "compounded for two years on one balance. Simple interest is "
+        "12,000 x 10 x 2 / 100 = 2,400 with no compounding, however the debt "
+        "happens to be paid off.",
     ),
 }
 

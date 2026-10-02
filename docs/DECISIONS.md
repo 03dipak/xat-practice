@@ -797,3 +797,52 @@ Lesson 1's key positions makes **five** tests fail, including
 because it must judge the set that will actually be *served*. Judging the full
 input instead would pass a paper that `G11` had already thinned into a
 fixed-letter remainder.
+
+### 7.1 Four options whose explanation did not produce them
+
+`key-auditor` audited the four items and confirmed **all four keys**. It also
+found distractors whose *stated cause* does not compute to the option beside it.
+Writing a test that checks exactly that found **two more it had missed**.
+
+| item | option | its own stated cause | that cause actually gives |
+|---|---|---|---|
+| L1-E | Rs 10,250 | "the time count dropped, 10,000 x 5 / 100" | **10,500** |
+| L1-E | Rs 10,200 | "the 5 divided by 10, rate read as 10%" | **12,000** |
+| L1-F | Rs 120 | "the /100 was dropped, 1,000 x 10 x 2" | **20,000** |
+| L1-H | Rs 14,700 | "compounded, 12000 x 1.1^2" | **14,520** |
+| L1-M | 4 : 3 | "the interest ratio inverted but not simplified" | **impossible** — 2160:1440 is 3:2 already in lowest terms |
+
+**Four of them were digit transpositions.** 10,250 for 10,500. 14,700 for
+14,520. And `Rs 120`'s real move is `1000 x (10 + 2) / 100` — the rate and the
+time **added** instead of multiplied — which is a better trap than the one the
+text described, and is now what it says.
+
+Every one of these passed `G8` (near-miss count), `G12` (a distinct named
+misconception exists), `G13`, and `G5`. **The gates check that a distractor has a
+misconception; they never check that the misconception produces the distractor.**
+That is the gap, and `test_every_distractor_is_produced_by_the_move_it_names`
+now closes it for every item in the lesson.
+
+A distractor whose cause is false is worse than a bad distractor: a learner
+cannot rule it out, and the explanation teaches a rule that is not true.
+
+### 7.2 L1-M is the one item that is not sound, and it is left that way on purpose
+
+Three problems, all confirmed by hand:
+
+1. Two of its four distractors need a denominator of **18**, and nothing in the
+   item produces 18 — both sums have `r x t = 24`, and `8+3=11`, `12+2=14`.
+2. Its headline insight — *the ratio of two interests is not the ratio of two
+   principals* — is **false for its own data**, precisely because `r x t = 24`
+   on both sides, so `1440 : 2160` and `6000 : 9000` are both `2 : 3`. A learner
+   who skipped the recovery landed on the key by accident.
+3. The coincidence is **forced** by the numbers: keeping 6,000 and 9,000 with
+   those interests pins `r x t` at 24 twice.
+
+So (2) cannot be fixed by editing an explanation; the stem has to change.
+
+It is not removed, because it is the lesson's only MEDIUM rung and deleting it
+would reproduce the D12 failure. It is taught with the defect **on record**, and
+`test_L1M_needs_its_two_collapse_traps_redesigned` is `xfail(strict=True)`, so
+the defect cannot be forgotten and quietly "fixed" at the symptom. The fourth
+item's key and arithmetic are sound; `G5` recomputes it and agrees.
