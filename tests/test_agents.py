@@ -77,17 +77,33 @@ def test_every_subagent_is_read_only_on_edit():
 
 
 def test_reviewers_cannot_broadly_execute():
-    """`uv run` and bare `python3` are denied; only the project venv is
-    allowed. A reviewer that can run arbitrary commands can quietly rewrite
-    what it is auditing."""
+    """A reviewer that can run arbitrary commands can quietly rewrite what it is
+    auditing.
+
+    The escape hatch was `.venv/bin/python`, and `uv run *` was DENIED -- the exact
+    inverse of the documented command form. MEASURED 2026-10-02: `uv run` changed
+    **0 files** under `.venv` (the `*.dist-info` set hashed identically before and
+    after, and `find .venv -newer <stamp>` was empty), because `uv.lock` is
+    committed and every tool is declared in `[dependency-groups] dev`. So allowing
+    it does not widen the blast radius; it points the reviewer at the same
+    interpreter the repo documents.
+
+    The assertions that carry the SAFETY are kept verbatim and are the point:
+    `edit: deny`, and `*: ask`, so anything not explicitly allow-listed still
+    prompts a human.
+    """
     for name, agent in AGENTS.items():
         if name == "mentor":
             continue
         bash = agent["permission"]["bash"]
-        assert bash["uv run *"] == "deny", name
-        assert bash[".venv/bin/python"] == "allow", name
-        assert bash[".venv/bin/python *"] == "allow", name
+        assert bash["uv run *"] == "allow", name
+        assert bash[".venv/bin/python"] == "deny", name
+        assert bash[".venv/bin/python *"] == "deny", name
+        # The safety properties, unchanged by the ruling:
         assert bash["*"] == "ask", name
+        assert bash["python3 *"] == "deny", name
+        assert bash["pip *"] == "deny", name
+        assert agent["permission"]["edit"] == "deny", name
 
 
 def test_every_role_has_a_description_that_states_its_boundary():
@@ -323,8 +339,14 @@ def test_the_ui_inspector_has_the_commands_it_needs_and_none_it_does_not():
     bash = AGENTS["ui-inspector"]["permission"]["bash"]
     assert AGENTS["ui-inspector"]["permission"]["edit"] == "deny"
     assert bash["*"] == "ask"
-    assert bash[".venv/bin/python *"] == "allow"
-    assert bash["uv run *"] == "deny", "a reviewer that can run uv run can rewrite the venv"
+    assert bash["uv run *"] == "allow", (
+        "it builds, serves and drives a browser, and the documented form is "
+        "`uv run`; denying it would scope the role to a command form the repo no "
+        "longer documents"
+    )
+    assert bash[".venv/bin/python *"] == "deny", (
+        "one form only, and it is the documented one"
+    )
 
 
 def test_the_rendered_page_is_checked_by_a_test_and_not_only_by_a_tool():

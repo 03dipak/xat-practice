@@ -52,18 +52,23 @@ WHAT THIS PROJECT IS
   concept, which is why every item sits on one subtopic at four levels instead
   of forty topics once.
 
-WAVE 0 IS LANDED. 78 tests, 96.48% coverage, ruff and mypy clean. `syllabus`
-(the weight model), `items` (schema + derived difficulty), `solver` (key
-recomputation) and `gates` (13 gates) exist and are measured. THE BROWSER
-BUNDLE IS NOT BUILT and `enumeration.py` and the blind second call are NOT
-BUILT. Absence of those is the expected state and is NEVER a finding. Do not
-report "the bundle is not implemented" as a defect.
+LANDS SO FAR: `syllabus` (the weight model), `items` (schema + derived
+difficulty), `solver` (key recomputation), `gates`, `registry`, `coverage`, the
+static browser bundle, and `lesson1.py` + `lesson2.py`. STILL NOT BUILT:
+`enumeration.py` and the blind second call. Absence of THOSE TWO is the expected
+state and is NEVER a finding; do not report them as defects.
+
+NO COUNTS ARE STATED HERE, DELIBERATELY. This preamble used to quote a test
+count, a coverage percentage and a gate count, and every one was wrong within a
+day. A number written into a prompt is a number nobody re-derives. **RUN the four
+gate commands below and quote what they print.** Same rule as
+`docs/DECISIONS.md`: prefer the measured form.
 
 THE FOUR GATE COMMANDS - all four, not three
-  .venv/bin/ruff check src tests
-  .venv/bin/mypy src
-  .venv/bin/python -m pytest -q --strict-markers --cov
-  .venv/bin/python -m coverage report --include="src/xat_practice/*.py" \\
+  uv run ruff check src tests tools
+  uv run mypy src
+  uv run pytest -q --strict-markers --cov
+  uv run coverage report --include="src/xat_practice/*.py" \\
       --fail-under=95 --precision=2
   The fourth is a SEPARATE command, not a coverage `include`. One `include`
   cannot both scope the floor to our own package and leave the whole tree
@@ -175,7 +180,7 @@ THE SYLLABUS IS NOT COVERED, ON PURPOSE
   they would pad the syllabus to look complete without adding marks.
 
 RULES THAT HAVE ACTUALLY BIT - the failure modes, not the slogans
-  1. EXECUTION BEATS REASONING. A stem can pass all 13 gates and still be
+  1. EXECUTION BEATS REASONING. A stem can pass every gate and still be
      unanswerable by a careful learner. Generate a paper and sit it.
   2. A COUNT WITH NO DENOMINATOR IS A LIE THAT LOOKS LIKE A PASS. The unit is
      196 questions, not "7 papers" and not "the syllabus".
@@ -344,7 +349,7 @@ the same class of defect had already produced a green suite: "all the earlier
 tests were static string assertions, and a script that threw ReferenceError
 before measuring once had a green suite. This executes the real script."
 
-1. RENDER IT. `.venv/bin/python tools/ui_probe.py --shot /tmp/ui.png` serves the
+1. RENDER IT. `uv run python tools/ui_probe.py --shot /tmp/ui.png` serves the
    built bundle through the real threaded server, drives it in a headless
    Chromium, and prints one line per check.
 2. LOOK AT THE PIXELS. Open the PNG. Never infer from the source.
@@ -691,10 +696,16 @@ THE FIVE THINGS TO CHECK, every time
    doc describes one of them as current, that is a finding. If a doc describes
    one of them as retired WITHOUT the reason, that is also a finding.
 
-STATED HONESTLY AND NOT TO BE RE-OPENED: `enumeration.py`, the blind second
-call, and the browser bundle are NOT BUILT. A doc that claims otherwise is
-wrong. A doc that says they are not built is CORRECT and must not be reported as
-a defect -- absence of these is the expected state.
+STATED HONESTLY AND NOT TO BE RE-OPENED: `enumeration.py` and the blind second
+call are NOT BUILT. A doc that claims they are built is wrong. A doc that says
+they are not built is CORRECT and must not be reported as a defect.
+
+MEASURED 2026-10-02, and this clause used to be dangerous: it also listed "the
+browser bundle" as NOT BUILT, which stopped being true the moment the bundle
+landed. So this role was **forbidden from reporting that the bundle exists** --
+it read a stale list as a licence to suppress a correct finding. Absence is only
+expected for the two things still named above. If a doc describes a component as
+unbuilt, verify it with `ls src/xat_practice/` before accepting the claim.
 
 OUTPUT under 40 lines:
 VERDICT: DOCS ACCURATE | DOCS HAVE DRIFT
@@ -753,11 +764,22 @@ REVIEWER_BASH = {
     "git status": "allow",
     "git diff": "allow",
     "git diff *": "allow",
-    "uv run *": "deny",
+    # `uv run`, NOT `.venv/bin/...`. The owner ruled `uv run` for every documented
+    # command on 2026-10-02, and these permissions were still the exact inverse:
+    # `uv run *` denied and `.venv/bin/python` allowed, in all nine reviewers. So
+    # every reviewer was scoped to a command form the repo no longer documents.
+    #
+    # It is not cosmetic. MEASURED the same day: `pytest` and `python -m pytest`
+    # were NOT the same command -- bare `pytest` failed 7 of 299 with
+    # `ModuleNotFoundError: No module named 'tests'` while `python -m pytest` passed
+    # all 292, because `-m` puts the CWD on `sys.path[0]`. An agent told to run the
+    # gates is running a *measurement*; which binary it reaches for changes the
+    # number. One form, and it is the documented one.
+    "uv run *": "allow",
     "python3 *": "deny",
     "pip *": "deny",
-    ".venv/bin/python": "allow",
-    ".venv/bin/python *": "allow",
+    ".venv/bin/python": "deny",
+    ".venv/bin/python *": "deny",
     "*": "ask",
 }
 
