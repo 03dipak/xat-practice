@@ -107,8 +107,22 @@ def cmd_levels(_: argparse.Namespace) -> int:
 
 
 def cmd_build(_: argparse.Namespace) -> int:
-    """Build the static bundle. Refuses if any item fails a gate."""
+    """Build the static bundle. Refuses if any item fails a gate.
+
+    Then it says how to OPEN it, because MEASURED 2026-10-02 the obvious reading
+    of "build" is that it produces something you can look at, and it does not: it
+    writes files and serves nothing. `out/.../index.html` opened directly in a
+    browser shows **"The question could not be loaded"**, because `file://` blocks
+    `fetch()` of a sibling JSON. That is not a broken build, it is the commit
+    barrier working -- but with no next step printed, it reads as one.
+    """
     bundle.main()
+    print("\nto open one in a browser (a file:// path will NOT work -- the browser"
+          " blocks\n  fetching paper.json, so the page says 'The question could not"
+          " be loaded'):\n")
+    for lesson in LESSONS:
+        print(f"  uv run xat-practice serve --lesson {lesson.lesson_id}")
+    print("    then http://127.0.0.1:8000/  (ctrl-c to stop)")
     return 0
 
 

@@ -205,15 +205,26 @@ uv run xat-practice serve        # lesson 1 at http://127.0.0.1:8000/
 uv run xat-practice serve --lesson lesson-02-geometry-similarity
 ```
 
+**`build` does not give you a web URL.** It writes files and serves nothing — the
+obvious reading of "build" is that you can go and look at the result, and you
+cannot. `build` now prints the `serve` line for each lesson so the next step is
+not a guess.
+
 `serve --lesson` takes a **`lesson_id`** from the registry (a path also works). It
 used to take a path and default to `out/` — a directory of lesson directories — so
 the default served a listing and the second lesson was unreachable without knowing
 its exact path.
 
-`serve` binds **loopback only** and serves one directory. It exists for one
-reason: browsers block `fetch()` of a sibling JSON on `file://`, so opening
-`out/lesson-01-simple-interest/index.html` directly cannot load `paper.json`.
-Ctrl-C to stop.
+`serve` binds **loopback only** and serves one directory, so each lesson wants its
+own port. It exists for one reason: browsers block `fetch()` of a sibling JSON on
+`file://`.
+
+**MEASURED 2026-10-02, and this is the failure that makes the second step
+mandatory:** opened as a `file://` path, `out/lesson-01-simple-interest/index.html`
+renders **"The question could not be loaded"** — confirmed by rendering it in
+headless Chromium. Nothing is broken; `file://` cannot fetch `paper.json`, and that
+is the commit barrier working. But with no URL to visit it reads as a dead build,
+so the rule is: **`build` then `serve`, never `file://`.** Ctrl-C to stop.
 
 It is **threaded**, and that is not an optimisation. It used to be a
 single-connection `TCPServer`, which parked its only thread forever the first
