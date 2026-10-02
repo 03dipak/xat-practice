@@ -67,6 +67,34 @@ class Distractor:
     of five options where four are random numbers measures guessing, not
     reasoning -- D9."""
 
+    produces: str | float | None = None
+    """The arithmetic of the wrong move, as a sympy expression over this item's
+    own numbers, which MUST equal the option's `option_values` entry.
+
+    MEASURED 2026-10-02, and this field exists because of it. Four of Lesson 1's
+    options were DIGIT TRANSPOSITIONS of what their own named mistake produced --
+    an option reading Rs 10,250 beside an explanation saying 10,000 x 5 / 100,
+    which is 10,500 -- and a fifth claimed a cause that is arithmetically
+    impossible. All five passed every gate, because `G8` counts near-misses, `G12`
+    checks that a misconception exists and is distinct, and NOT ONE GATE ASKED
+    whether the named mistake PRODUCES the option it is attached to.
+
+    A distractor whose cause is false is worse than a bad distractor: a learner
+    cannot rule it out, and the explanation teaches a rule that is not true.
+
+    So the cause is now a machine-checkable expression and `G16` refuses the item
+    when it does not evaluate to the option.
+
+    **What this does NOT buy, stated plainly.** `G16` proves the move computes
+    the option. It cannot prove the move is a mistake a learner would actually
+    make -- `1440*100/18` is arithmetically valid and pedagogically absurd, and
+    no arithmetic check will ever say so. Plausibility stays a `key-auditor`
+    judgement; arithmetic is a gate. That division is the point.
+
+    `None` means unproven, and on a QUANT item `G16` REFUSES it rather than
+    skipping it. A distractor nobody can reproduce is a distractor nobody has
+    verified."""
+
 
 @dataclass(frozen=True, slots=True)
 class Item:

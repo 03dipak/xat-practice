@@ -23,6 +23,7 @@ GATE_IDS = (
     "G8_near_miss_distractors", "G9_calc_budget", "G10_stratum_shape",
     "G11_mix_within_tolerance", "G12_misconceptions_named", "G13_no_leak",
     "G14_option_value_matches_label", "G15_key_not_predictable",
+    "G16_distractor_produces_its_option",
 )
 
 
@@ -61,6 +62,26 @@ def _stem_fingerprint(stem: str) -> str:
     reasoning, so they are removed before comparing.
     """
     return "".join(c for c in stem.lower() if c.isalpha())
+
+
+def _as_number(expr: str | float) -> float | None:
+    """Evaluate an arithmetic expression to a number, or None if it is not one.
+
+    Returns None rather than raising: a `produces` that does not parse is a
+    missing proof, and G16's caller already refuses an absent one. A gate that
+    raises is a gate that is not run."""
+    import sympy
+
+    if isinstance(expr, (int, float)):
+        return float(expr)
+    try:
+        value = sympy.sympify(expr)
+    except (sympy.SympifyError, TypeError, SyntaxError):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _value_visible_in_label(label: str, value: str) -> bool:
@@ -247,6 +268,46 @@ def run(items: list[Item]) -> GateResult:
                        f"option {idx} is labelled {label!r} but its value is "
                        f"{value!r}; the learner would be marked against a "
                        f"number they cannot see in the option")
+
+        # G16. Every distractor must equal what its own named mistake computes
+        # to.
+        #
+        # MEASURED 2026-10-02. Four of Lesson 1's options were digit
+        # transpositions of their own stated cause -- Rs 10,250 beside an
+        # explanation saying 10,000 x 5 / 100, which is 10,500 -- and a fifth
+        # claimed a cause that is arithmetically impossible. All five passed G8,
+        # G12, G13 and G5, because those gates check that a distractor HAS a
+        # misconception and NOT that the misconception PRODUCES the distractor.
+        #
+        # Skipped where there is no arithmetic to check: a LOGIC or JUDGEMENT
+        # item has no `option_values`, and a distractor there is refuted by a
+        # counterexample rather than by a number. Requiring `produces` on those
+        # would be a rule with no meaning.
+        if it.option_values:
+            for d in it.distractors:
+                if d.produces is None:
+                    refuse("G16_distractor_produces_its_option",
+                           f"the distractor {d.text!r} has no `produces`, so the "
+                           f"move its misconception names is not machine-checked. "
+                           f"Give it the arithmetic, or drop the option: a trap "
+                           f"nobody can reproduce is a trap nobody has verified.")
+                    continue
+                shown = (it.options.index(d.text) if d.text in it.options else -1)
+                if shown < 0:
+                    refuse("G16_distractor_produces_its_option",
+                           f"the distractor {d.text!r} is not among the options")
+                    continue
+                want = _as_number(it.option_values[shown])
+                got = _as_number(d.produces)
+                if want is None or got is None:
+                    continue
+                if abs(got - want) > 1e-9:
+                    refuse("G16_distractor_produces_its_option",
+                           f"the option {d.text!r} is {want:g} but the move its "
+                           f"own misconception names, {d.produces!r}, computes "
+                           f"{got:g}. Either the option or the explanation is "
+                           f"wrong, and a learner following the lesson cannot "
+                           f"reconcile them.")
 
         blocked = {r.gate for r in res.refusals if r.item_id == it.id}
         if not blocked:

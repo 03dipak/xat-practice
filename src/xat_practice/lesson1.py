@@ -73,6 +73,7 @@ FOUNDATION = Item(
     distractors=(
         Distractor(
             text="Rs 220",
+            produces=(1000*11*2/100),
             misconception="the rate applied to the AMOUNT rather than the "
                           "principal, i.e. 1000 x 11 x 2 / 100 -- the same "
                           "shape as compounding",
@@ -80,12 +81,14 @@ FOUNDATION = Item(
         ),
         Distractor(
             text="Rs 100",
+            produces=(1000*10*1/100),
             misconception="the time read as 1 year instead of 2, which is what "
                           "happens when a year count is skimmed",
             is_real_near_miss=True,
         ),
         Distractor(
             text="Rs 1,200",
+            produces=(1000 + 1000*10*2/100),
             misconception="the principal added to the interest, so an AMOUNT "
                           "was returned where the question asked for the "
                           "interest. Reading the question's noun",
@@ -93,6 +96,7 @@ FOUNDATION = Item(
         ),
         Distractor(
             text="Rs 120",
+            produces=(1000*(10+2)/100),
             # MEASURED 2026-10-02: this text said "the percentage left
             # un-divided by 100, so 1,000 x 10 x 2 was never scaled down", and
             # 1,000 x 10 x 2 is 20,000 -- not 120. The stated cause did not
@@ -136,6 +140,7 @@ EASY = Item(
     distractors=(
         Distractor(
             text="Rs 1,000",
+            produces=(10000*5*2/100),
             misconception="the simple interest reported where the question "
                           "asked for the amount, i.e. the SI computed correctly "
                           "and then stopped one line early",
@@ -143,6 +148,7 @@ EASY = Item(
         ),
         Distractor(
             text="Rs 11,025",
+            produces=(10000*(1+sp.Rational(5,100))**2),
             misconception="COMPOUNDED: 10000 x 1.05^2 instead of "
                           "10000 + 10000 x 5 x 2 / 100. The single most common "
                           "error in this topic -- simple interest never "
@@ -155,6 +161,7 @@ EASY = Item(
             # which is 10,500. A digit transposition in the option, the same
             # disease as Rs 14,700. The option now equals the move it names.
             text="Rs 10,500",
+            produces=(10000 + 10000*5*1/100),
             misconception="the rate applied once instead of for the full 2 "
                           "years, i.e. the time count dropped, so 10,000 x 5 / 100 "
                           "= 500 and not the full 1,000",
@@ -166,6 +173,7 @@ EASY = Item(
             # 12,000. Four options in this lesson had an explanation that did
             # not produce them, and all four had passed every gate.
             text="Rs 12,000",
+            produces=(10000 + 10000*10*2/100),
             misconception="the 5 divided by 10 rather than 100, so the rate "
                           "was read as 10% and the interest doubled to 2,000",
             is_real_near_miss=True,
@@ -202,6 +210,7 @@ MEDIUM = Item(
     distractors=(
         Distractor(
             text="8 : 9",
+            produces=(sp.Rational(1440*100//18, 2160*100//24)),
             misconception="the principal of the first sum recovered as "
                           "1440x100/18 = 8,000 because 8x3 was collapsed to 18 "
                           "instead of multiplied as 8x3",
@@ -209,6 +218,7 @@ MEDIUM = Item(
         ),
         Distractor(
             text="1 : 2",
+            produces=(sp.Rational(1440*100//24, 2160*100//18)),
             misconception="the second principal recovered as "
                           "2160x100/18 = 12,000 by the same collapse, which "
                           "makes the answer too small",
@@ -216,6 +226,7 @@ MEDIUM = Item(
         ),
         Distractor(
             text="3 : 2",
+            produces=(sp.Rational(2160, 1440)),
             misconception="the interest ratio 2160 : 1440 used directly, with "
                           "the rates and times never inverted out. THE named "
                           "trap for this subtopic",
@@ -238,6 +249,7 @@ MEDIUM = Item(
             # is what makes this trap sharp, and it is the same coincidence that
             # weakens this item -- see the note in SOLUTIONS["L1-M"].
             text="1 : 1",
+            produces=(sp.Rational(1440, 6000) / sp.Rational(2160, 9000)),
             misconception="each interest divided by its OWN principal instead of "
                           "the principal recovered from the formula, so "
                           "1440/6000 and 2160/9000 both came out 6/25 and the "
@@ -278,12 +290,14 @@ HARD = Item(
     distractors=(
         Distractor(
             text="Rs 12,000",
+            produces=12000,
             misconception="the interest IGNORED on the grounds that instalments "
                           "were 'equal', i.e. equal principal and nothing else",
             is_real_near_miss=True,
         ),
         Distractor(
             text="Rs 9,600",
+            produces=(12000 - 12000*10*2/100),
             misconception="the interest SUBTRACTED, 12000 - 12000x10x2/100. The "
                           "sign error: the debt was repaid early, so the amount "
                           "owed is larger than the principal, not smaller",
@@ -291,6 +305,7 @@ HARD = Item(
         ),
         Distractor(
             text="Rs 7,200",
+            produces=((12000 + 12000*10*2/100)/2),
             misconception="the interest halved as well as the principal, "
                           "treating two instalments as two half-sums each "
                           "accruing half the interest on half the time",
@@ -304,6 +319,7 @@ HARD = Item(
             # labelling a different one, so a learner who followed the lesson
             # arrived at 14,520 and could not see why it had been rejected.
             text="Rs 14,520",
+            produces=(12000*sp.Rational(11,10)**2),
             misconception="the rate read as 10% per YEAR compounding, "
                           "12000 x 1.1 x 1.1 = 14,520, instead of simple "
                           "interest on the full sum for 2 years",

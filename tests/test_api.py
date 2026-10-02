@@ -283,9 +283,14 @@ def test_gate_result_bookkeeping():
         "both keys are in range and both are wrong: the derivation gives 200 "
         "and each keyed option reads 2"
     )
-    assert res.by_gate()["G12_misconceptions_named"] == 1, (
-        "item a has 4 distractors for only 2 wrong options"
-    )
+    # G12 no longer fires here, and that is the fix rather than a regression.
+    # MEASURED 2026-10-02: this fixture used to give item a four placeholder
+    # distractors ("0".."3") for only two wrong options, so G12 fired -- but for
+    # a reason that had nothing to do with the gate's purpose. Those placeholders
+    # also matched no option at all, which is the defect G16 now refuses. The
+    # fixture builders derive distractors from the final option list, so the count
+    # matches by construction and the count check belongs to a G12 test of its own.
+    assert res.by_gate()["G12_misconceptions_named"] == 0
 
 
 def test_gate_result_on_an_empty_paper():

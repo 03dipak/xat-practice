@@ -846,3 +846,62 @@ would reproduce the D12 failure. It is taught with the defect **on record**, and
 `test_L1M_needs_its_two_collapse_traps_redesigned` is `xfail(strict=True)`, so
 the defect cannot be forgotten and quietly "fixed" at the symptom. The fourth
 item's key and arithmetic are sound; `G5` recomputes it and agrees.
+
+### 7.3 D17 — `Distractor.produces`, so the cross-check is HOUSEKEEPING and not a habit
+
+**Ruled 2026-10-02, at the owner's request: "this should be housekeeping rules
+here, because we are generating all XAT topics so don't want regression."**
+
+Correct, and the agent pass cannot do it. An agent audit is a *sample*: it found
+five bad options in one lesson of forty subtopics, and it found two of the five.
+A rule that depends on someone running the auditor is a habit, and habits expire
+at the exact moment 40 topics land.
+
+So the cause of each distractor is now **machine-checkable data**, not prose.
+
+`Distractor` gains `produces`: the arithmetic of the wrong move, as a sympy
+expression over the item's own numbers, which must equal the option's value.
+
+`G16_distractor_produces_its_option` refuses when
+
+- `produces` is absent on a QUANT item — **absent means UNPROVEN, and unproven is
+  a refusal, not a skip**. A gate that skips what it cannot check reports a pass it
+  did not earn; that is the same defect as the coverage floor reading eight files
+  out of nine, and it is stated here because it is the tempting version of this
+  rule;
+- the expression evaluates to something other than the option.
+
+Falsified against the shipped defect:
+
+```
+G16  the option 'Rs 10,250' is 10250 but the move its own misconception names,
+     10500.0, computes 10500. Either the option or the explanation is wrong,
+     and a learner following the lesson cannot reconcile them.
+```
+
+**What G16 does NOT buy, and this is the honest boundary.** It proves the move
+computes the option. It cannot prove the move is a mistake a learner would make.
+`1440*100/18` is arithmetically valid and pedagogically absurd, `G16` passes it,
+and no arithmetic check will ever say otherwise.
+`test_g16_does_not_claim_to_check_plausibility` asserts that it passes, so a later
+session cannot mistake G16 for the whole job. **Arithmetic is a gate; plausibility
+stays a `key-auditor` judgement.** That division is the point, and pretending a
+gate covers both is how a gate stops being trusted.
+
+**Three fixture defects fell out of adding the rule**, and all three were the same
+disease as the one it was built to catch:
+
+1. `quant_item()`'s options contained **210**, which no plausible mistake produces
+   from 1,000 at 10% for 2 years. Replaced with **2,000**, which is
+   `1000*10*2/10` — the `/100` read as a `/10`.
+2. `_distractors()` emitted placeholder texts `"0".."3"` that appeared in **no**
+   option list, so every gate test that built a paper carried distractors nobody
+   could match to an option. Distractors are now derived from the **final** option
+   list.
+3. `at_level()` built its distractors **before** the key rotation, which reorders
+   the options, orphaning every one of them. `G12` and `G16` caught it on the first
+   run after the change.
+
+And `test_gate_result_bookkeeping` had asserted `G12 == 1` — it depended on defect
+2. The assertion is now `== 0`, with the reason recorded, because the count check
+belongs to a G12 test of its own.

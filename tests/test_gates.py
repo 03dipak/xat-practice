@@ -10,6 +10,8 @@ project and the bundle on disk still contains it.
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 from xat_practice import lesson1
@@ -23,7 +25,6 @@ from xat_practice.items import (
     PaperShape,
     derive_level,
     expected_ev,
-    recipe,
 )
 from xat_practice.solver import SOLVER, Failure, Verdict
 from xat_practice.syllabus import POPULATION, QUESTIONS_PER_PAPER, TOPICS, Stratum
@@ -32,11 +33,41 @@ from xat_practice.syllabus import POPULATION, QUESTIONS_PER_PAPER, TOPICS, Strat
 # fixtures: one clean item per stratum
 # ---------------------------------------------------------------------------
 
-def _distractors(n: int = 4) -> tuple[Distractor, ...]:
-    return tuple(
-        Distractor(text=f"{i}", misconception=f"trap {i}", is_real_near_miss=True)
-        for i in range(n)
-    )
+#: The real arithmetic of each wrong move in the fixture below: 1,000 at 10% for
+#: 2 years, so the interest is 200. MEASURED 2026-10-02: `_distractors` used to
+#: emit placeholder texts "0".."3" that appeared in NO option list, so every gate
+#: test that built a paper was quietly carrying distractors nobody could match to
+#: an option -- the same class of defect G16 exists to refuse.
+_CAUSES = {
+    "100": "1000*10*1/100",          # the time skimmed to one year
+    "2,000": "1000*10*2/10",         # the /100 became a /10
+    "220": "1000*11*2/100",          # the rate applied to the amount
+    "1,200": "1000 + 1000*10*2/100",  # the amount returned, not the interest
+}
+
+
+def _distractors(options: tuple[str, ...] = (), key_index: int = 1,
+                 real: int | None = None) -> tuple[Distractor, ...]:
+    """One distractor per non-key option, each with the arithmetic that makes it.
+
+    Where the cause is known from the scenario it is the REAL expression. Where a
+    test has overridden the options with abstract strings, `produces` falls back to
+    the option's own value -- which makes G16 inert for that test and is stated
+    here rather than hidden, because a test about G5 is not a test about G16."""
+    pool = options or ("100", "2,000", "220", "1,200")
+    out = []
+    for i, text in enumerate(pool):
+        if i == key_index:
+            continue
+        # `real` sets how many count as real near-misses, which is what makes
+        # each level derive to its own tier. All four still carry `produces`,
+        # because G16 asks for the arithmetic of EVERY distractor, not only the
+        # plausible ones -- an implausible option still needs to be reachable.
+        is_real = True if real is None else (len(out) < real)
+        out.append(Distractor(text=text, misconception=f"the move behind {text}",
+                              is_real_near_miss=is_real,
+                              produces=_CAUSES.get(text, text)))
+    return tuple(out)
 
 
 def quant_item(**kw) -> Item:
@@ -45,16 +76,23 @@ def quant_item(**kw) -> Item:
         subtopic_id="pl_int:simple-interest",
         stratum=Stratum.QUANT,
         stem="What simple interest does 1000 earn at 10% for 2 years?",
-        options=("100", "200", "210", "220", "1200"),
+        # 2,000 replaces a former 210. MEASURED 2026-10-02: 210 had NO plausible
+        # cause from 1000 at 10% for 2 years, which is the exact defect G16
+        # exists to catch -- and this fixture, the one every gate test builds on,
+        # was carrying it. Each option below now equals a real wrong move.
+        options=("100", "200", "2,000", "220", "1200"),
         key_index=1,
-        option_values=("100", "200", "210", "220", "1200"),
+        option_values=("100", "200", "2000", "220", "1200"),
         derivation="1000*10*2/100",
-        distractors=_distractors(),
         derivation_steps=2,
         needs_substitution=False,
         insight_required=False,
     )
     base.update(kw)
+    # The distractors are built from the FINAL option list, so they always name a
+    # real option. Built inside the literal they would see a half-defined dict.
+    if "distractors" not in kw:
+        base["distractors"] = _distractors(base["options"], base["key_index"])
     # A test that overrides `options` without `option_values` is testing the
     # OPTION, not the value, and inventing values for it would be noise. So
     # when only `options` is given, derive the values from them. This is why
@@ -79,13 +117,16 @@ def logic_item(**kw) -> Item:
         key_index=0,
         option_values=(),
         derivation="enumerated",
-        distractors=_distractors(),
         derivation_steps=1,
         needs_substitution=False,
         insight_required=False,
         enumeration_size=12,
     )
     base.update(kw)
+    # The distractors are built from the FINAL option list, so they always name a
+    # real option. Built inside the literal they would see a half-defined dict.
+    if "distractors" not in kw:
+        base["distractors"] = _distractors(base["options"], base["key_index"])
     # A test that overrides `options` without `option_values` is testing the
     # OPTION, not the value, and inventing values for it would be noise. So
     # when only `options` is given, derive the values from them. This is why
@@ -110,12 +151,15 @@ def judgement_item(**kw) -> Item:
         key_index=0,
         option_values=(),
         derivation=None,
-        distractors=_distractors(),
         derivation_steps=0,
         needs_substitution=False,
         insight_required=False,
     )
     base.update(kw)
+    # The distractors are built from the FINAL option list, so they always name a
+    # real option. Built inside the literal they would see a half-defined dict.
+    if "distractors" not in kw:
+        base["distractors"] = _distractors(base["options"], base["key_index"])
     # A test that overrides `options` without `option_values` is testing the
     # OPTION, not the value, and inventing values for it would be noise. So
     # when only `options` is given, derive the values from them. This is why
@@ -301,12 +345,12 @@ def test_derive_level_one_move_with_real_near_misses_is_easy():
 def test_G1_four_options_is_refused():
     """XAT 2026 has 5. A 4-option item is a CAT habit and it moves the
     guessing equilibrium from EV 0.0 to EV +0.0625."""
-    res = run([quant_item(options=("100", "200", "210", "220"))])
+    res = run([quant_item(options=("100", "200", "2,000", "220"))])
     assert any(r.gate == "G1_options" for r in res.refusals)
 
 
 def test_G3_all_of_the_above_is_refused():
-    res = run([quant_item(options=("100", "200", "210", "All of the above", "x"))])
+    res = run([quant_item(options=("100", "200", "2,000", "All of the above", "x"))])
     assert any(r.gate == "G3_no_all_of_above" for r in res.refusals)
 
 
@@ -378,21 +422,31 @@ def at_level(level: Level, i: int) -> Item:
     """An item whose STRUCTURE is the recipe for `level`. This is the only
     sanctioned way to build a fixture at a target level.
 
-    The key is ROTATED to `1 + i` so a fixture set has the key spread of a real
+    Two things are deliberate and both came from G15 and G16.
+
+    The key is ROTATED to `1 + i`, so a fixture set has the key spread of a real
     paper. MEASURED 2026-10-02: every paper fixture in this file put the key at
     the same index, so `always answer B` scored 20 of 20 -- the identical defect
-    Lesson 1 shipped, living in the very tests meant to catch it. `G15` refuses
-    such a set, which is correct, and it meant these fixtures had to become what
-    a real paper looks like."""
+    Lesson 1 shipped, living in the tests meant to catch it.
+
+    The distractors are derived from the ROTATED option list, after the rotation,
+    never before it. They must name real options and carry the arithmetic that
+    produces them (`G16`), and a rotation reorders the options, so building them
+    first silently orphans them -- which is exactly what `G12` and `G16` caught."""
     r = LEVEL_RECIPES[level]
-    return _rotate_key(quant_item(
+    item = _rotate_key(quant_item(
         id=f"{level.value}-{i}",
         stem=_DISTINCT_STEMS[i],
         derivation_steps=int(r["derivation_steps"]),      # type: ignore[call-overload]
         needs_substitution=bool(r["needs_substitution"]), # type: ignore[call-overload]
         insight_required=bool(r["insight_required"]),     # type: ignore[call-overload]
-        distractors=recipe(level),
+        distractors=(),
     ), 1 + i)
+    return dataclasses.replace(
+        item,
+        distractors=_distractors(item.options, item.key_index,
+                                real=int(r["real_near_misses"])),
+    )
 
 
 def test_every_level_is_reachable_from_its_recipe():
@@ -514,6 +568,18 @@ def test_every_gate_id_is_reachable():
     # exactly this and all fourteen other gates passed it -- 'always A' scored
     # 4 of 4. The reachability input is the defect that shipped.
     fire(*[_rotate_key(at_level(LEVEL_ORDER[i], i), 0) for i in range(4)])
+    # G16: a distractor whose arithmetic is absent. MEASURED 2026-10-02: four of
+    # Lesson 1's options were digit transpositions of the move their own
+    # explanation named, and every gate passed them.
+    import dataclasses as _dc
+
+    from xat_practice.items import Distractor as _D
+
+    unproven = _dc.replace(
+        quant_item(),
+        distractors=tuple(_D(text=str(i), misconception=f"m{i}",
+                             is_real_near_miss=True) for i in range(4)))
+    fire(unproven)
 
     missing = set(GATE_IDS) - fired
     assert not missing, f"unreachable gates: {sorted(missing)}"
@@ -760,4 +826,111 @@ def test_g15_runs_after_the_mix_is_enforced():
     src = __import__("inspect").getsource(gates.run)
     assert src.index("_enforce_mix") < src.index("_refuse_predictable_keys"), (
         "G15 must run after G11, or it judges a set that is not the one served"
+    )
+
+
+# ---------------------------------------------------------------------------
+# G16 -- a distractor must be produced by the move it names
+# ---------------------------------------------------------------------------
+# MEASURED 2026-10-02, from the key-auditor's audit of Lesson 1 and then from the
+# test written to check its findings. Five options had an explanation that did
+# not produce them; four were digit transpositions. Every one of them passed G8,
+# G12, G13 and G5 -- those gates check that a distractor HAS a misconception, and
+# not one of them asked whether the misconception PRODUCES the distractor.
+#
+# The owner asked for this to be HOUSEKEEPING rather than a manual agent pass,
+# because 40 subtopics are coming and a manual pass does not survive contact with
+# them. That is why `Distractor.produces` exists.
+
+def test_g16_refuses_an_option_its_own_explanation_does_not_produce():
+    """The historical defect, planted exactly as it shipped."""
+    import dataclasses
+
+    from xat_practice.items import Distractor
+
+    item = quant_item(
+        id="transposed",
+        options=("100", "10,250", "2,000", "220", "1200"),
+        option_values=("100", "10250", "2000", "220", "1200"),
+        key_index=1,
+        derivation="1000*10*2/100",
+        distractors=(
+            # the move named is 10,500; the option reads 10,250
+            Distractor(text="10,250", misconception="the time count dropped",
+                       is_real_near_miss=True, produces="10000 + 10000*5*1/100"),
+            Distractor(text="100", misconception="m", is_real_near_miss=True,
+                       produces="1000*10*1/100"),
+            Distractor(text="2,000", misconception="m2", is_real_near_miss=True,
+                       produces="1000*10*2/10"),
+            Distractor(text="220", misconception="m3", is_real_near_miss=True,
+                       produces="1000*11*2/100"),
+        ),
+    )
+    res = run([item])
+    fired = [r for r in res.refusals if r.gate == "G16_distractor_produces_its_option"]
+    assert fired, "a digit transposition in an option was ADMITTED"
+    assert "10250" in fired[0].detail and "10500" in fired[0].detail, (
+        "the refusal must name BOTH numbers, or the author cannot tell which one "
+        f"is wrong: {fired[0].detail}"
+    )
+    assert dataclasses  # keep the import honest
+
+
+def test_g16_refuses_a_distractor_with_no_arithmetic_at_all():
+    """`produces = None` means UNPROVEN, and on a quantitative item that is a
+    refusal rather than a skip.
+
+    A gate that skips what it cannot check is a gate that reports a pass it did
+    not earn -- the same defect as the coverage floor that read eight files out
+    of nine."""
+    from xat_practice.items import Distractor
+
+    item = quant_item(
+        id="unproven",
+        distractors=tuple(Distractor(text=str(i), misconception=f"m{i}",
+                                     is_real_near_miss=True)
+                          for i in range(4)))
+    res = run([item])
+    assert any(r.gate == "G16_distractor_produces_its_option"
+               for r in res.refusals), (
+        "a distractor with no machine-checkable cause was admitted. Four of them "
+        "in Lesson 1 were digit transpositions of their own explanation."
+    )
+
+
+def test_g16_does_not_run_on_items_with_no_arithmetic():
+    """A LOGIC or JUDGEMENT item has no `option_values`, so a distractor there is
+    refuted by a counterexample, not by a number. A rule with no meaning is not a
+    rule."""
+    assert not any(r.gate == "G16_distractor_produces_its_option"
+                   for r in run([logic_item()]).refusals)
+
+
+def test_every_distractor_in_the_lesson_is_machine_verified():
+    """The housekeeping property the owner asked for: no distractor anywhere in
+    the built lesson can carry an unverifiable cause."""
+    from xat_practice import lesson1
+
+    for it in lesson1.LESSON:
+        for d in it.distractors:
+            assert d.produces is not None, (
+                f"{it.id}: {d.text!r} has no `produces`, so its cause is prose "
+                f"that no gate can check"
+            )
+
+
+def test_g16_does_not_claim_to_check_plausibility():
+    """`1440*100/18` is arithmetically valid and pedagogically absurd, and no
+    arithmetic check will ever say so. Recorded so a future session does not
+    believe G16 closes the question."""
+    from xat_practice import lesson1
+
+    item = next(it for it in lesson1.LESSON if it.id == "L1-M")
+    absurd = next(d for d in item.distractors if d.text == "8 : 9")
+    assert absurd.produces is not None
+    res = run([item])
+    assert not any(r.gate == "G16_distractor_produces_its_option"
+                   for r in res.refusals), (
+        "G16 must pass the /18 distractors -- the arithmetic is valid -- which is "
+        "exactly why plausibility stays a key-auditor judgement"
     )
