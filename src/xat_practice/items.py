@@ -433,3 +433,23 @@ def expected_ev(*, options: int = 5, mark_correct: int = 1,
     guess = (mark_correct / options) + ((options - 1) / options) * mark_wrong
     blank_cost = sum(blank_penalty for _ in range(max(0, blanks - blank_penalty_after)))
     return round(guess + blank_cost, 4)
+
+
+def with_answers(items: tuple[Item, ...],
+                 solutions: dict[str, tuple[str, ...]]) -> dict[str, tuple[str, ...]]:
+    """Append the stated answer to every step-by-step.
+
+    Because a solution that ends on a rejected distractor reads, to a learner
+    scanning the last line, as though the last number were the answer. The final
+    line is the answer and nothing else.
+
+    MEASURED 2026-10-02: this lived in `lesson1.py` and Lesson 2 had to import
+    it from there, which would have made the second lesson depend on the first.
+    It is here because it is a property of the `Item`, not of any one lesson."""
+    out: dict[str, tuple[str, ...]] = {}
+    for item in items:
+        steps = solutions.get(item.id)
+        if not steps:
+            raise KeyError(f"{item.id} has no step-by-step")
+        out[item.id] = (*steps, f"ANSWER: {item.key_text}")
+    return out

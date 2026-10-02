@@ -6,7 +6,7 @@ project builds nothing for VA&LR or DM. GK (20, Part 2) is excluded from the
 percentile by XLRI and is out of scope. Read every number below as a number about
 **one section**, not about the exam.
 
-Of that 28-question section, **1 of 40 trained subtopics is written**.
+Of that 28-question section, **2 of 40 trained subtopics are written** — 8 items.
 
 ## How this file stays true
 
@@ -24,16 +24,15 @@ carry that lie for longer, and nobody would know.
 ## The ledger
 
 <!-- BEGIN GENERATED: xat-practice coverage -->
-
 ```
-subtopics written     1 of 40   (2.5%)
-items written         4
+subtopics written     2 of 40   (5.0%)
+items written         8
 topics               17   named traps 104
 block capacity        0 of 40 subtopics have >= 10 named traps
 
 tier  traps  block capacity      status   subtopic
 -- P1 ----------------------------------------------------------
-P1       3   NO BLOCK          pending   geo_mens:similarity-and-area-ratios
+P1       3   NO BLOCK          WRITTEN   geo_mens:similarity-and-area-ratios
 P1       2   NO BLOCK          pending   geo_mens:angle-bisector-and-cevian
 P1       3   NO BLOCK          pending   geo_mens:circle-tangents
 P1       3   NO BLOCK          pending   geo_mens:mensuration-2d-3d
@@ -74,8 +73,7 @@ P3       6   NO BLOCK          pending   pl_int:false-weight-dishonest-dealer
 P3       2   NO BLOCK          pending   prob_comb:basic-arrangements-and-permutation
 P3       2   NO BLOCK          pending   prob_comb:single-die-and-basic-events
 P3       2   NO BLOCK          pending   venn:venn-counting
-P3       2   NO BLOCK          pending   log:surds-and-rationalisation
-```
+P3       2   NO BLOCK          pending   log:surds-and-rationalisation```
 
 <!-- END GENERATED: xat-practice coverage -->
 

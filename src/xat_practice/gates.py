@@ -9,6 +9,7 @@ remembers the purpose of is a gate nobody dares remove.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 import sympy as sp
@@ -151,7 +152,11 @@ def _value_visible_in_label(label: str, value: str) -> bool:
     return True
 
 
-def run(items: list[Item]) -> GateResult:
+def run(items: Sequence[Item]) -> GateResult:
+    # `Sequence`, not `list`: this only ever iterates, and a lesson holds its items
+    # as a tuple. Declaring `list` forced the CLI to copy every lesson just to
+    # satisfy the annotation. MEASURED 2026-10-02, two mypy errors from adding the
+    # second lesson -- the type was lying about the contract.
     res = GateResult()
     seen: dict[str, str] = {}
 
@@ -414,7 +419,7 @@ def _refuse_predictable_keys(res: GateResult, items: list[Item]) -> None:
 MIX_ENFORCEMENT_FLOOR = 8
 
 
-def _enforce_mix(res: GateResult, items: list[Item]) -> list[Item]:
+def _enforce_mix(res: GateResult, items: Sequence[Item]) -> list[Item]:
     """Drop the OVER-quota items, keeping the lower tiers.
 
     `D3`: a paper that cannot fill its quota is SHORT, never padded. And when

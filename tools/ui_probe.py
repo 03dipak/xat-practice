@@ -46,16 +46,34 @@ PROBE = ROOT / "tools" / "ui_probe.html"
 #: there was exactly one lesson and wrong the moment there were two. A UI check
 #: pointed at a directory nobody builds is a UI check that silently stops testing
 #: anything, so the path comes from the registry.
-def _bundle_dir():
+def _registry():
     import sys as _sys
 
     _sys.path.insert(0, str(ROOT / "src"))
-    from xat_practice.bundle import out_dir
     from xat_practice.registry import LESSONS
 
-    return out_dir(LESSONS[0].lesson_id)
+    return LESSONS
 
 
+def _bundle_dir(lesson_id: str | None = None):
+    from xat_practice.bundle import out_dir
+
+    lessons = _registry()
+    if lesson_id is None:
+        return out_dir(lessons[0].lesson_id)
+    for lesson in lessons:
+        if lesson.lesson_id == lesson_id:
+            return out_dir(lesson_id)
+    raise SystemExit(
+        f"unknown lesson {lesson_id!r}. Registered: "
+        + ", ".join(x.lesson_id for x in lessons)
+    )
+
+
+#: Resolved from argv by `main`, because the checks must be runnable against ANY
+#: registered lesson. MEASURED 2026-10-02: this was `LESSONS[0]` evaluated at
+#: import, so `47/47` was a statement about Lesson 1 alone and said nothing about
+#: every other bundle -- the coverage-floor defect with a green tick, one level up.
 BUNDLE = _bundle_dir()
 
 
@@ -96,15 +114,52 @@ def stage(tmp: Path, expected: dict[str, int]) -> Path:
         shutil.copy(BUNDLE / name, tmp / name)
     key = json.loads((BUNDLE / "answerkey.json").read_text())["items"]
     expected = {i: key[i]["k"] for i in key}
+
+    # The teach card and question 1, read from the BUNDLE UNDER TEST.
+    #
+    # MEASURED 2026-10-02: the probe asserted Lesson 1's formula, Lesson 1's
+    # legend words and Lesson 1's principal, written into the HTML. Run against
+    # Lesson 2 it failed 4 checks that were correct and passed every leak check
+    # vacuously, because it was looking for a key that Lesson 2 does not have.
+    # A leak check that cannot see the lesson's own answer is not a leak check.
+    # So both the card's content and Q1's key text and numbers now travel with the
+    # probe, read from the same files the page is served from.
+    paper = json.loads((BUNDLE / "paper.json").read_text())
+    teach_block = paper.get("teach") or {}
+    first = paper["items"][0]
+    first_key = key[first["id"]]
+    q1 = {
+        "key_text": first_key.get("key_text", ""),
+        "numbers": sorted(set(_numbers(first.get("stem", "")))),
+    }
     html = PROBE.read_text()
     assert "<!-- EXPECTED is injected" in html, "the probe lost its injection point"
+    inject = (
+        "<script>const EXPECTED = " + json.dumps(expected) + ";window.EXPECTED="
+        "EXPECTED;window.TEACH=" + json.dumps(teach_block) + ";window.Q1="
+        + json.dumps(q1) + ";</script>\n"
+    )
     html = html.replace(
         "<!-- EXPECTED is injected by tools/ui_probe.py before this script runs.",
-        f"<script>const EXPECTED = {json.dumps(expected)};window.EXPECTED="
-        "EXPECTED;</script>\n<!-- injected by tools/ui_probe.py; the original note"
+        inject + "<!-- injected by tools/ui_probe.py; the original note"
         " follows.", 1)
     (tmp / "ui_probe.html").write_text(html)
     return tmp
+
+
+def _numbers(text: str) -> list[str]:
+    """The numeric literals in a stem, comma-formatted both ways.
+
+    `'14,400'` has to be found when the card says `14400`, and both forms are
+    returned because the leak check compares against CARD text, which is free to
+    format differently from the stem.
+    """
+    out: list[str] = []
+    for raw in re.findall(r"\d[\d,]*(?:\.\d+)?", text):
+        out.append(raw)
+        if "," in raw:
+            out.append(raw.replace(",", ""))
+    return out
 
 
 def shot_pages(tmp: Path, browser: str, out_dir: Path, port: int,
@@ -188,7 +243,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--shot-dir", help="write start/options/result PNGs here")
     ap.add_argument("--keep", action="store_true", help="leave the temp dir")
     ap.add_argument("--timeout", type=int, default=60)
+    ap.add_argument(
+        "--lesson",
+        help="lesson_id to check, e.g. lesson-02-geometry-similarity. "
+             "Defaults to the first registered lesson.",
+    )
     args = ap.parse_args(argv)
+
+    global BUNDLE
+    if args.lesson:
+        BUNDLE = _bundle_dir(args.lesson)
+    print(f"bundle: {BUNDLE}")
 
     for required in (PROBE, BUNDLE / "lesson.js", BUNDLE / "answerkey.json",
                      BUNDLE / "style.css"):

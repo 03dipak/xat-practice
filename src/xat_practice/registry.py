@@ -33,7 +33,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from . import lesson1
+from . import lesson1, lesson2
 from .items import Item
 
 
@@ -68,6 +68,13 @@ LESSONS: tuple[Lesson, ...] = (
         solutions=lesson1.SOLUTIONS,
         teach=lesson1.TEACH,
     ),
+    Lesson(
+        lesson_id=lesson2.LESSON_ID,
+        subtopic_id=lesson2.SUBTOPIC,
+        items=lesson2.LESSON,
+        solutions=lesson2.SOLUTIONS,
+        teach=lesson2.TEACH,
+    ),
 )
 
 
@@ -84,11 +91,40 @@ def items_written() -> int:
     return sum(len(lesson.items) for lesson in LESSONS)
 
 
-def by_id(lesson_id: str) -> Lesson:
-    for lesson in LESSONS:
-        if lesson.lesson_id == lesson_id:
-            return lesson
-    raise KeyError(f"no lesson {lesson_id!r}; have {[x.lesson_id for x in LESSONS]}")
+
+def _assert_one_rung_per_level(lesson: Lesson) -> None:
+    """A LESSON must actually derive one item per level.
+
+    MEASURED 2026-10-02, on Lesson 2's first build. Its FOUNDATION item came out
+    at **1.65, which is EASY**, because all four distractors were flagged real
+    near-misses and 4 x 0.2 pushed a 0.85 base over the 1.5 boundary. The lesson
+    therefore had **no foundation rung at all** -- and nothing said so.
+
+    Why nothing said so is the part worth keeping:
+
+    - `G11` enforces the level mix and **does not run on a four-item lesson**.
+      `MIX_ENFORCEMENT_FLOOR` is 8, and D12 records that as a FIX: the paper-level
+      rule once deleted the hard rung of Lesson 1. That fix was right, and it left
+      the lesson's own mix ungoverned.
+    - `G7` compares a `claimed_level` to the derived level, and `claimed_level` is
+      `None` on every authored item, so it has nothing to compare.
+    - `G8` asks for at least two real near-misses and is satisfied by four.
+
+    So a lesson could lose a rung silently, and did. This is the guard D12's fix
+    left missing: not `G11` loosened, but a check that belongs to the lesson.
+    """
+    from .items import LEVEL_ORDER, derive_level
+
+    derived = [derive_level(it).level for it in lesson.items]
+    missing = [lv.value for lv in LEVEL_ORDER if lv not in derived]
+    if missing:
+        raise AssertionError(
+            f"{lesson.lesson_id} has no item that derives {missing}. Derived: "
+            + ", ".join(f"{it.id}={lv.value}" for it, lv
+                        in zip(lesson.items, derived, strict=True))
+            + ". A lesson whose rungs do not derive is not a ladder, however well "
+              "written the four questions are."
+        )
 
 
 def assert_registry_is_honest() -> None:
@@ -100,16 +136,26 @@ def assert_registry_is_honest() -> None:
        mock, and calling it a lesson would make the coverage ledger lie;
     2. every item has a solution and a step-by-step that ends on its own key;
     3. a subtopic is taught by at most one lesson, so 'written' is a count and
-       not a sum with a duplicate in it.
+       not a sum with a duplicate in it;
+    4. a lesson derives one item per level -- added when Lesson 2's foundation
+       item came out as EASY and the lesson silently had no foundation rung.
     """
     seen: dict[str, str] = {}
     for lesson in LESSONS:
+        # ORDER IS NORMATIVE, and moving this line is a regression that already
+        # happened once. MEASURED 2026-10-02: the rung check ran FIRST, so a
+        # deliberately malformed two-item lesson was reported as "has no item that
+        # derives medium, hard" and the test asserting the "ONE subtopic" message
+        # failed. The lesson was wrong for TWO reasons and the report named the
+        # less useful one. A lesson spanning two subtopics is a MOCK, so that is
+        # the fact worth stating first.
         if len(lesson.subtopics) != 1:
             raise AssertionError(
                 f"{lesson.lesson_id} covers {len(lesson.subtopics)} subtopics "
                 f"{sorted(lesson.subtopics)}; a lesson is ONE subtopic at four "
                 "levels"
             )
+        _assert_one_rung_per_level(lesson)
         (subtopic,) = tuple(lesson.subtopics)
         if subtopic in seen:
             raise AssertionError(
@@ -128,15 +174,3 @@ def assert_registry_is_honest() -> None:
                 )
 
 
-def all_items() -> list[Item]:
-    """Every item of every lesson, in lesson order.
-
-    The `gates` and `levels` verbs report over this rather than over
-    `lesson1.LESSON`, because MEASURED 2026-10-02 a verb that printed "population:
-    4 items (lesson lesson-01-simple-interest)" would keep reporting Lesson 1
-    after Lesson 2 existed, and a gate suite that quietly tests less than it
-    claims is the coverage-floor defect again."""
-    out: list[Item] = []
-    for lesson in LESSONS:
-        out.extend(lesson.items)
-    return out

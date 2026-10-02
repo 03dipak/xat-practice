@@ -29,7 +29,7 @@ from pathlib import Path
 import pytest
 
 from xat_practice import cli
-from xat_practice.registry import LESSONS, items_written
+from xat_practice.registry import LESSONS, items_written, subtopics_written
 from xat_practice.syllabus import SUBTOPICS
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -45,11 +45,23 @@ def test_gates_reports_a_population_with_a_denominator(capsys):
     'a count with no denominator is a lie that looks like a pass'."""
     assert cli.cmd_gates(None) == 0
     out = capsys.readouterr().out
-    assert "population: 4 items" in out
-    assert "admitted:   4" in out
+    # DERIVED, not hardcoded. MEASURED 2026-10-02: this said "population: 4" and
+    # broke the day Lesson 2 was registered -- which was correct behaviour and the
+    # wrong test. A count pinned in a test is a count that must be edited by hand
+    # every time the world grows, and the edit is exactly where a lie creeps in.
+    for lesson in LESSONS:
+        assert f"population: {len(lesson.items)} items = 1 lesson, " \
+               f"{lesson.lesson_id}, {lesson.subtopic_id}" in out, (
+            f"each lesson must state its own population and subtopic: {out}")
+        assert f"admitted: {len(lesson.items)}/{len(lesson.items)}" in out
+        assert f"over {len(lesson.items)})" in out, (
+            "the refusal rate is printed without its denominator")
     assert "refused:" in out
-    # the rate must name what it is a rate OF
-    assert "over 4)" in out, "the refusal rate is printed without its denominator"
+    # and the pooled line must NOT look like a score
+    assert "NOT a score" in out, (
+        "a pooled total with no warning is a paper-shaped claim about a pool of "
+        "lessons"
+    )
 
 
 def test_levels_prints_the_derived_level_and_its_drivers(capsys):
@@ -241,6 +253,44 @@ def test_the_decision_ledger_quotes_the_same_population(capsys):
 # `cmd_serve`. An uncovered error path is the half nobody has ever run, which is
 # the state this project is most often bitten by.
 
+def _only(monkeypatch, items):
+    """Make the verbs see exactly `items`, as ONE lesson.
+
+    MEASURED 2026-10-02: these tests used to patch `cli.all_items`. Then
+    `cmd_gates` was changed to iterate `LESSONS` (per lesson, because G11 and G15
+    are paper rules), and the patch silently did nothing -- the planted defect was
+    never gated and the assertion would have passed FOR THE WRONG REASON.
+
+    A planted defect that is not planted is the exact failure mode this repo keeps
+    hitting: a check that has only ever been shown a true statement. So the seam
+    is patched where the verb reads, and asserted below by planting a defect that
+    MUST be refused.
+    """
+    import dataclasses
+
+
+    base = LESSONS[0]
+    lesson = dataclasses.replace(base, items=tuple(items),
+                                 subtopic_id=base.subtopic_id)
+    monkeypatch.setattr(cli, "LESSONS", (lesson,))
+    return lesson
+
+
+def test_the_planting_seam_itself_rejects_a_bad_lesson(monkeypatch):
+    """Guard the guard. If `_only` ever stops being read, every planted-defect test
+    above silently passes on an ungated input."""
+    import dataclasses
+
+    from xat_practice import lesson1
+
+    wrong = dataclasses.replace(lesson1.LESSON[0], key_index=1)
+    _only(monkeypatch, [wrong])
+    seen = [it for ls in cli.LESSONS for it in ls.items]
+    assert [it.id for it in seen] == [wrong.id], (
+        "_only did not put the planted item where the verb reads it"
+    )
+
+
 def test_gates_exits_non_zero_and_names_the_refused_item(monkeypatch, capsys):
     """`gates` must FAIL LOUDLY, not print a refusal and return 0.
 
@@ -265,7 +315,7 @@ def test_gates_exits_non_zero_and_names_the_refused_item(monkeypatch, capsys):
     # effect the moment `cmd_gates` began reading the registry -- so the planted
     # wrong key was never seen and the test would have passed FOR THE WRONG
     # REASON. Patch the seam the verb actually calls.
-    monkeypatch.setattr(cli, "all_items", lambda: [wrong])
+    _only(monkeypatch, [wrong])
 
     assert cli.cmd_gates(None) == 1, "a refused item must make the verb exit non-zero"
     out = capsys.readouterr().out
@@ -295,7 +345,7 @@ def test_gates_names_the_gate_that_caught_a_value_label_mismatch(monkeypatch,
 
     mismatched = dataclasses.replace(
         lesson1.LESSON[0], option_values=("200", "220", "100", "1200", "1250"))
-    monkeypatch.setattr(cli, "all_items", lambda: [mismatched])
+    _only(monkeypatch, [mismatched])
 
     assert cli.cmd_gates(None) == 1
     out = capsys.readouterr().out
@@ -373,10 +423,9 @@ def test_weightage_no_longer_conflates_items_with_subtopics(capsys):
     )
     bare = [ln for ln in out.splitlines()
             if "written:" in ln and "items written" not in ln]
-    assert not bare or "written: 1 " in bare[0], (
-        f"a bare 'written: N' is ambiguous: {bare}"
-    )
-    assert "1/40 subtopics = 2.5%" in out, (
+    assert not bare, f"a bare 'written: N' is ambiguous: {bare}"
+    written = len(subtopics_written())
+    assert f"{written}/40 subtopics = {100 * written / 40:.1f}%" in out, (
         "the coverage figure must be printed with its denominator"
     )
 
@@ -386,13 +435,19 @@ def test_gates_and_levels_report_over_every_lesson(capsys):
     test less than it claims -- the coverage-floor defect with a green tick."""
     assert cli.cmd_gates(None) == 0
     out = capsys.readouterr().out
-    assert f"population: {items_written()} items across {len(LESSONS)} lesson(s)" in out
+    assert f"lessons:    {len(LESSONS)}   items gated: {items_written()}" in out
     assert all(x.lesson_id in out for x in LESSONS), (
         "every registered lesson must be named in the population line"
     )
     capsys.readouterr()
     assert cli.cmd_levels(None) == 0
-    assert "L1-F" in capsys.readouterr().out
+    lvl = capsys.readouterr().out
+    # EVERY item of EVERY lesson, not a sample. This test was written when Lesson 2
+    # did not exist and asserted "L1-F"; it would have passed while quietly
+    # covering half the items.
+    assert all(it.id in lvl for ls in LESSONS for it in ls.items), (
+        "levels must report every item of every lesson"
+    )
 
 
 def test_the_registry_refuses_a_lesson_covering_two_subtopics():
@@ -554,8 +609,93 @@ def test_the_block_capacity_number_is_the_honest_one():
 
 def test_coverage_lists_the_written_subtopic_as_written():
     from xat_practice.coverage import render_coverage
+    from xat_practice.registry import subtopics_written
 
     out = render_coverage()
-    assert "WRITTEN" in out
-    assert "pl_int:simple-interest" in out
-    assert out.count("WRITTEN") == 1, "exactly one lesson is written"
+    written = subtopics_written()
+    # Every written subtopic is marked WRITTEN, and ONLY those -- a stray WRITTEN
+    # would overstate coverage, which is the same lie as a count with no
+    # denominator, wearing a tick.
+    assert out.count("WRITTEN") == len(written), (
+        f"expected {len(written)} WRITTEN markers, found {out.count('WRITTEN')}"
+    )
+    # Column order matters and is asserted rather than assumed: the status column
+    # PRECEDES the subtopic column, so "is the subtopic's own row marked" has to be
+    # answered by row, not by asking what text comes after the name.
+    rows = [ln for ln in out.splitlines() if "WRITTEN" in ln]
+    for sub in sorted(written):
+        assert any(sub in ln for ln in rows), (
+            f"{sub} is written but its row is not marked WRITTEN: {out}"
+        )
+    for ln in rows:
+        assert any(sub in ln for sub in written), (
+            f"a WRITTEN row names a subtopic that is not written: {ln}"
+        )
+    for line in out.splitlines():
+        if "WRITTEN" in line:
+            assert "items" not in line, (
+                f"WRITTEN must mark a subtopic, never an item count: {line}"
+            )
+
+
+def test_the_registry_refuses_a_duplicate_subtopic():
+    """Two lessons claiming one subtopic is what turns '2 of 40' into a sum with a
+    duplicate in it, so the count would overstate what is trained."""
+    import dataclasses
+
+    from xat_practice import lesson1 as L1
+    from xat_practice import registry as R
+
+    base = next(x for x in R.LESSONS if x.lesson_id == L1.LESSON_ID)
+    twin = dataclasses.replace(base, lesson_id="lesson-01-again")
+    original = R.LESSONS
+    try:
+        R.LESSONS = (base, twin)
+        with pytest.raises(AssertionError) as err:
+            R.assert_registry_is_honest()
+        assert base.subtopic_id in str(err.value)
+    finally:
+        R.LESSONS = original
+
+
+@pytest.mark.parametrize("break_it, expected", [
+    # A missing step-by-step, and a step-by-step whose LAST LINE is a rejected
+    # distractor. The second is the one a learner actually suffers: they read to the
+    # bottom of the panel and copy whatever number is last.
+    ("missing", "no step-by-step"),
+    ("wrong_last_line", "does not state its own key"),
+])
+def test_the_registry_refuses_a_solution_that_does_not_state_its_key(break_it,
+                                                                     expected):
+    import dataclasses
+
+    from xat_practice import lesson1 as L1
+    from xat_practice import registry as R
+
+    base = next(x for x in R.LESSONS if x.lesson_id == L1.LESSON_ID)
+    sols = dict(base.solutions)
+    target = L1.LESSON[0].id
+    if break_it == "missing":
+        sols.pop(target)
+    else:
+        sols[target] = (*sols[target][:-1], "the answer is Rs 180")
+    bad = dataclasses.replace(base, solutions=sols)
+    original = R.LESSONS
+    try:
+        R.LESSONS = (bad,)
+        with pytest.raises(AssertionError, match=expected):
+            R.assert_registry_is_honest()
+    finally:
+        R.LESSONS = original
+
+
+def test_every_lesson_is_registered_exactly_once_and_is_buildable():
+    """The registry is the source of truth (D20), so the build's own walk over it is
+    the cheapest honest check that `xat-practice build` cannot half-succeed."""
+    from xat_practice.bundle import out_dir
+
+    ids = [x.lesson_id for x in LESSONS]
+    assert len(set(ids)) == len(ids), f"duplicate lesson_id in {ids}"
+    for lesson in LESSONS:
+        assert out_dir(lesson.lesson_id).name == lesson.lesson_id
+        assert len(lesson.solutions) == len(lesson.items)

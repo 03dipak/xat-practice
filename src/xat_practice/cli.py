@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 
 from . import build_opencode, bundle, gates
 from .items import LESSON_SHAPE, LEVEL_RECIPES
-from .registry import LESSONS, all_items, items_written, subtopics_written
+from .registry import LESSONS, items_written, subtopics_written
 from .syllabus import Tier, by_tier, self_check, stratum_counts
 
 if TYPE_CHECKING:
@@ -30,24 +30,58 @@ if TYPE_CHECKING:
 
 
 def cmd_gates(_: argparse.Namespace) -> int:
-    """Run the gate suite on Lesson 1 and report per-gate counts.
+    """Run the gate suite PER LESSON and report per-gate counts.
 
     Refusal counts are over a NAMED population, because a count with no
     denominator is a lie that looks like a pass.
+
+    MEASURED 2026-10-02, on the first build with two lessons registered. Running
+    the suite over the pooled 8 items admitted **0 of 8** and refused two items
+    that are individually perfect:
+
+    - `G11` refused `L2-F`, "foundation over quota (1/1)". It apportions the
+      20-item PAPER mix, and `MIX_ENFORCEMENT_FLOOR` is 8 -- a number chosen to
+      mean "smaller than a paper". **Two lessons now reach it**, so a paper-shaped
+      rule ran against something that is not a paper. This is D12's defect one
+      step up: G11 was removed from lessons, and nothing stopped the *pool of
+      lessons* from becoming the new fake paper.
+    - `G15` refused `L1-F` because answering B throughout both lessons scores
+      above its ceiling. True of the pool, and meaningless: no candidate is ever
+      given both lessons in one sitting, and no XAT paper holds two Simple Interest
+      items and two Geometry items at the same key indices.
+
+    Neither gate is loosened. A paper rule is given a paper, so each lesson is
+    gated on its own and the refusal rate is reported per lesson, where the
+    denominator is unambiguous. The pooled figure is printed as ITEMS ONLY and
+    explicitly not as a pass.
     """
-    every = all_items()
-    res = gates.run(every)
-    print(f"population: {len(every)} items across {len(LESSONS)} lesson(s): "
-          + ", ".join(x.lesson_id for x in LESSONS))
-    print(f"admitted:   {len(res.admitted)}")
-    print(f"refused:    {len(res.refusals)}  "
-          f"(rate {res.refusal_rate} over {len(every)})")
-    for gate, n in sorted(res.by_gate().items()):
-        if n:
-            print(f"  {gate}: {n}")
-    for r in res.refusals:
-        print(f"  REFUSED {r.gate} {r.item_id}: {r.detail}")
-    return 0 if not res.refusals else 1
+    total_items = total_refused = 0
+    failed = False
+    for lesson in LESSONS:
+        res = gates.run(lesson.items)
+        total_items += len(lesson.items)
+        total_refused += len(res.refusals)
+        failed = failed or bool(res.refusals)
+        # lesson_id AND subtopic_id. `lesson_id` is the bundle directory and the
+        # URL a learner is given, so dropping it from the report when this verb
+        # went per-lesson made two lessons indistinguishable in the output.
+        print(f"population: {len(lesson.items)} items = 1 lesson, "
+              f"{lesson.lesson_id}, {lesson.subtopic_id}")
+        print(f"  admitted: {len(res.admitted)}/{len(lesson.items)}")
+        print(f"  refused:  {len(res.refusals)}  "
+              f"(rate {res.refusal_rate} over {len(lesson.items)})")
+        for gate, n in sorted(res.by_gate().items()):
+            if n:
+                print(f"    {gate}: {n}")
+        for r in res.refusals:
+            print(f"    REFUSED {r.gate} {r.item_id}: {r.detail}")
+    print(f"\nlessons:    {len(LESSONS)}   items gated: {total_items}   "
+          f"refused: {total_refused} across {total_items}")
+    print("NOTE: the pooled total above is an item count, NOT a score. Paper-shaped "
+          "gates (G11 mix, G15 key position) are run per lesson on purpose; "
+          "pooling two lessons into one population invents a paper that is never "
+          "sat.")
+    return 1 if failed else 0
 
 
 def cmd_levels(_: argparse.Namespace) -> int:
@@ -56,14 +90,19 @@ def cmd_levels(_: argparse.Namespace) -> int:
     The drafter's claimed level is shown beside it when there is one, because a
     disagreement is a refusal (G7) and a silent overwrite would hide it.
     """
-    res = gates.run(all_items())
-    for item in all_items():
-        rep = res.reports[item.id]
-        claim = f"claimed {item.claimed_level}" if item.claimed_level else "no claim"
-        print(f"{item.id:6s} {rep.level.value:11s} score {rep.score:5.2f}  "
-              f"({claim})")
-        for d in rep.drivers:
-            print(f"         - {d}")
+    # Per lesson, for the reason measured in `cmd_gates`: G11 and G15 are paper
+    # rules and a pool of lessons is not a paper.
+    for lesson in LESSONS:
+        print(f"\n{lesson.lesson_id}  ({lesson.subtopic_id})")
+        res = gates.run(lesson.items)
+        for item in lesson.items:
+            rep = res.reports[item.id]
+            claim = (f"claimed {item.claimed_level}" if item.claimed_level
+                     else "no claim")
+            print(f"{item.id:6s} {rep.level.value:11s} score {rep.score:5.2f}  "
+                  f"({claim})")
+            for d in rep.drivers:
+                print(f"         - {d}")
     return 0
 
 
@@ -220,13 +259,38 @@ def cmd_serve(args: argparse.Namespace) -> int:
     a browser holds a connection open, and the symptom is a page that never
     loads and never errors.
     """
-    root = Path(args.lesson).resolve()
-    if not (root / "index.html").exists():
-        print(f"no index.html in {root}. Build it first: "
-              f"xat-practice build", file=sys.stderr)
-        return 1
+    # A LESSON ID, not a path. MEASURED 2026-10-02: this took a filesystem path
+    # and defaulted to `bundle.OUT_DIR`, which is `out/` -- a directory of lesson
+    # directories. Serving it gave a directory listing, so with two lessons the
+    # learner had to know the exact `out/lesson-02-...` path to reach the second
+    # one at all, and the default served nothing.
+    #
+    # It still accepts a path, because that is how you inspect a bundle that is not
+    # in the registry, and because a path is what `build` prints.
+    resolved = Path(args.lesson).resolve()
+    if (resolved / "index.html").exists():
+        root, label = resolved, str(resolved)
+    else:
+        known = {x.lesson_id for x in LESSONS}
+        if args.lesson not in known:
+            print(f"no lesson {args.lesson!r} and no index.html in {resolved}. "
+                  f"Registered: {', '.join(sorted(known))}. Build first with "
+                  f"`xat-practice build`.", file=sys.stderr)
+            return 1
+        from xat_practice.bundle import out_dir
+
+        root = out_dir(args.lesson)
+        label = args.lesson
+        if not (root / "index.html").exists():
+            print(f"{args.lesson} is registered but not built: no index.html in "
+                  f"{root}. Run `xat-practice build`.", file=sys.stderr)
+            return 1
+
     httpd = make_server(root, args.port)
-    print(f"serving {root} at http://127.0.0.1:{args.port}/  (ctrl-c to stop)")
+    print(f"serving {label} at http://127.0.0.1:{args.port}/  (ctrl-c to stop)")
+    print("every lesson, one port each:")
+    for lesson in LESSONS:
+        print(f"  .venv/bin/xat-practice serve --lesson {lesson.lesson_id}")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
@@ -259,7 +323,12 @@ def main(argv: list[str] | None = None) -> int:
 
     s = sub.add_parser("serve", help="serve a lesson over loopback http")
     s.add_argument("--port", type=int, default=8000)
-    s.add_argument("--lesson", default=str(bundle.OUT_DIR))
+    s.add_argument(
+        "--lesson",
+        default=LESSONS[0].lesson_id,
+        help="lesson_id from the registry, or a path to a bundle directory. "
+             f"One of: {', '.join(x.lesson_id for x in LESSONS)}",
+    )
     s.set_defaults(fn=cmd_serve)
 
     args = p.parse_args(argv)

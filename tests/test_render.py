@@ -44,7 +44,20 @@ RUNNER = ROOT / "tools" / "ui_probe.py"
 from xat_practice.bundle import out_dir as _out_dir  # noqa: E402
 from xat_practice.registry import LESSONS as _LESSONS  # noqa: E402
 
-BUNDLE = _out_dir(_LESSONS[0].lesson_id)
+
+def _bundle_of(lesson_id: str) -> Path:
+    return _out_dir(lesson_id)
+
+
+#: Every registered lesson is rendered, checked and gated. MEASURED 2026-10-02:
+#: this was `_LESSONS[0]`, so the whole UI gate covered ONE bundle and `47/47` was
+#: quoted as the UI being sound. Pointing the probe at Lesson 2 -- same runner,
+#: same 47 checks -- found five of them asserting Lesson 1's own content: its
+#: formula, its legend words, its units phrasing, its example numbers and its
+## answer letter. Every one of those five would have passed, silently and
+## correctly, on a page that was leaking a key.
+BUNDLE = _bundle_of(_LESSONS[0].lesson_id)
+ALL_BUNDLES = [_bundle_of(x.lesson_id) for x in _LESSONS]
 
 REQUIRED = ["index.html", "lesson.js", "paper.json", "answerkey.json"]
 
@@ -66,21 +79,41 @@ def _browser() -> str | None:
 
 @pytest.fixture(scope="module")
 def probe() -> dict:
-    """Run the probe once and hand every test the same verdict."""
-    for name in REQUIRED:
-        if not (BUNDLE / name).exists():
-            pytest.skip(f"{name} is not built; run `.venv/bin/xat-practice build`")
+    """Run the probe ONCE PER REGISTERED LESSON.
+
+    Was `_LESSONS[0]` only. See `ALL_BUNDLES` above for the measurement that
+    forced this: the same 47 checks, aimed at every lesson, turned five of them
+    from passing-on-Lesson-1 into real findings.
+    """
     if _browser() is None:
         pytest.skip(
             "no Chromium or headless_shell on this box, so the UI was NOT "
             "checked. This is a skip, never a pass."
         )
-    proc = subprocess.run(
-        [sys.executable, str(RUNNER)], capture_output=True, text=True, timeout=300)
-    out = {"returncode": proc.returncode, "stdout": proc.stdout,
-           "stderr": proc.stderr}
-    out["results"] = _parse(proc.stdout)
-    return out
+    per: dict[str, dict] = {}
+    for lesson in _LESSONS:
+        bundle = _bundle_of(lesson.lesson_id)
+        for name in REQUIRED:
+            if not (bundle / name).exists():
+                pytest.skip(f"{name} not built for {lesson.lesson_id}; run "
+                            "`.venv/bin/xat-practice build`")
+        proc = subprocess.run(
+            [sys.executable, str(RUNNER), "--lesson", lesson.lesson_id],
+            capture_output=True, text=True, timeout=300)
+        entry = {"returncode": proc.returncode, "stdout": proc.stdout,
+                 "stderr": proc.stderr, "lesson_id": lesson.lesson_id,
+                 "bundle": str(bundle)}
+        entry["results"] = _parse(proc.stdout)
+        per[lesson.lesson_id] = entry
+    # The flat view the existing tests read, plus the per-lesson view.
+    flat = {"returncode": 0, "stdout": "", "stderr": "",
+            "results": [], "per_lesson": per}
+    for entry in per.values():
+        flat["results"].extend(entry["results"])
+        flat["returncode"] = max(flat["returncode"], entry["returncode"])
+        flat["stdout"] += entry["stdout"]
+        flat["stderr"] += entry["stderr"]
+    return flat
 
 
 def _parse(stdout: str) -> list[dict]:
@@ -119,10 +152,60 @@ def test_every_ui_check_passed(probe):
 def test_the_probe_actually_ran_and_did_not_skip(probe):
     """A probe that reports 0 checks and exits 0 is the exact failure this file
     exists to prevent: an empty result set that reads as a clean run."""
-    assert len(probe["results"]) >= 25, (
-        f"only {len(probe['results'])} checks were reported; a probe that "
-        "silently checks nothing must not be reported as a pass"
+    assert len(probe["results"]) >= 25 * len(_LESSONS), (
+        f"only {len(probe['results'])} checks were reported across "
+        f"{len(_LESSONS)} lesson(s); a probe that silently checks nothing must "
+        "not be reported as a pass"
     )
+
+
+@pytest.mark.parametrize("lesson_id", [x.lesson_id for x in _LESSONS])
+def test_every_lesson_renders_clean_in_a_browser(probe, lesson_id):
+    """Per lesson, so a failure NAMES the bundle that broke.
+
+    MEASURED 2026-10-02: with one fixture over one bundle, a failure could only
+    say "the UI failed". Geometry was registered and the UI gate never mentioned
+    it. Now every registered lesson is rendered and checked, and a refusal says
+    which one.
+    """
+    entry = probe["per_lesson"][lesson_id]
+    failures = [r for r in entry["results"] if r["mark"] in ("FAIL", "BAD")]
+    assert not failures, (
+        f"{lesson_id} ({entry['bundle']}): {len(failures)} UI checks failed "
+        "against a real browser:\n" + "\n".join(r["line"] for r in failures)
+    )
+    assert entry["returncode"] == 0, f"{lesson_id}: {entry['stderr']}"
+
+
+@pytest.mark.parametrize("lesson_id", [x.lesson_id for x in _LESSONS])
+def test_no_check_passes_vacuously_on_any_lesson(probe, lesson_id):
+    """A check that cannot see the lesson it is checking must not pass.
+
+    MEASURED 2026-10-02: the leak checks searched for Lesson 1's key text
+    ("Rs 200") and its principal ("1,000"). Against Lesson 2 those strings are
+    absent -- so the checks passed, and would have passed on a page that printed
+    Geometry's answer in the teaching card. Each of those checks now derives its
+    target from the bundle under test, so it can only pass by actually looking.
+    """
+    entry = probe["per_lesson"][lesson_id]
+    names = {r["name"]: r for r in entry["results"]}
+    for check in ("the-teach-card-does-not-leak-questions-key",
+                  "the-teach-card-uses-different-numbers-from-q1"):
+        assert check in names, (
+            f"{lesson_id} never ran {check}; a leak check that is not run is not "
+            f"a leak check. Ran: {sorted(names)}"
+        )
+        line = names[check]["line"]
+        assert "NO numbers" not in line, (
+            f"{lesson_id}: {check} passed on an empty example -- vacuous\n{line}"
+        )
+    # The verdict check must name a REAL letter of THIS lesson's first rung.
+    if "the-verdict-names-the-answer-letter" in names:
+        assert "Not correct. The answer is " in names[
+            "the-verdict-names-the-answer-letter"]["line"], (
+            f"{lesson_id}: the verdict check produced no letter\n"
+            + names["the-verdict-names-the-answer-letter"]["line"]
+        )
     names = {r["name"] for r in probe["results"]}
     for required in ("page-renders", "reveal-is-born-disabled",
                      "no-option-exists-in-the-dom-before-the-reveal",
@@ -239,3 +322,46 @@ def test_the_probe_page_is_committed_and_mentions_its_own_reason():
         "the probe documents the exact defect that shipped. If that sentence is "
         "removed the next session loses the reason this file exists."
     )
+
+
+# ---------------------------------------------------------------------------
+# the probe's own JavaScript must parse
+# ---------------------------------------------------------------------------
+
+def test_the_probe_script_actually_parses():
+    """`tools/ui_probe.html` is a script, and a script that does not parse checks
+    nothing and says so convincingly.
+
+    MEASURED 2026-10-02, twice. `lesson.js` shipped broken for a whole wave --
+    an apostrophe in prose closed a string literal, the browser ran none of the
+    file, and 161 tests passed because they asserted on its TEXT. Then the probe's
+    own script hit the same class of fault: two adjacent JavaScript string
+    literals with no `+` between them, where Python's implicit concatenation had
+    silently done nothing. `SyntaxError: Unexpected string`, the whole script dead,
+    and the page reported `PENDING` -- a state that reads like a slow network
+    rather than a broken gate.
+
+    So every script in this repo is parsed, not grepped. `shutil.which` skips when
+    node is absent, and `test_js_strings_have_no_bare_apostrophe` is the node-free
+    half for the served page.
+    """
+    import re
+    import tempfile
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed; the node-free quote check still runs")
+    html = (ROOT / "tools" / "ui_probe.html").read_text()
+    bodies = re.findall(r"<script>(.*?)</script>", html, re.S)
+    assert bodies, "the probe page has no inline script to check"
+    with tempfile.TemporaryDirectory() as tmp:
+        for n, body in enumerate(bodies):
+            f = Path(tmp) / f"probe{n}.js"
+            f.write_text(body)
+            proc = subprocess.run([node, "--check", str(f)],
+                                  capture_output=True, text=True, timeout=30)
+            assert proc.returncode == 0, (
+                f"tools/ui_probe.html block {n} does not parse, so the probe "
+                "runs NONE of it and reports a verdict it never produced.\n"
+                f"{proc.stderr}"
+            )

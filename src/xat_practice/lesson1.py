@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import sympy as sp
 
-from .items import LEVEL_RECIPES, Distractor, Item, Level
+from .items import LEVEL_RECIPES, Distractor, Item, Level, with_answers
 from .syllabus import Stratum
 
 LESSON_ID = "lesson-01-simple-interest"
@@ -509,21 +509,9 @@ SOLUTIONS: dict[str, tuple[str, ...]] = {
 }
 
 
-def _with_answers(items: tuple[Item, ...],
-                  solutions: dict[str, tuple[str, ...]]) -> dict[str, tuple[str, ...]]:
-    """Append the stated answer to every solution.
-
-    Added because a solution that ends on a rejected distractor reads, to a
-    learner scanning the last line, as if the last number were the answer. The
-    final line is now the answer and nothing else.
-    """
-    out: dict[str, tuple[str, ...]] = {}
-    for item in items:
-        out[item.id] = solutions[item.id] + (f"ANSWER: {item.key_text}",)
-    return out
 
 
-SOLUTIONS = _with_answers(LESSON, SOLUTIONS)
+SOLUTIONS = with_answers(LESSON, SOLUTIONS)
 
 
 def lesson() -> tuple[Item, ...]:

@@ -23,19 +23,33 @@ that does not name its strata is overstated.
 
 ## Status
 
-Waves 0 and 1 landed. **1 of 40 subtopics is written** (Simple Interest, four
-rungs, all four admitted, all keys recomputed). Measured on 2026-10-02:
+Waves 0 and 1 landed, plus **Lesson 2, Geometry: areas and similar shapes**.
+**2 of 40 subtopics are written, 8 items, all eight admitted, all keys
+recomputed.** Measured on 2026-10-02:
 
 ```
-.venv/bin/python -m pytest -q --strict-markers --cov      -> 254 passed
+.venv/bin/python -m pytest -q --strict-markers --cov      -> 292 passed
 .venv/bin/python -m coverage report --include="src/xat_practice/*.py" \
-    --fail-under=95 --precision=2                        -> TOTAL 96.64%
-.venv/bin/ruff check src tests                           -> All checks passed
-.venv/bin/mypy src                                       -> no issues, 9 files
+    --fail-under=95 --precision=2                        -> TOTAL 95.86%
+.venv/bin/ruff check src tests tools                     -> All checks passed
+.venv/bin/mypy src                                       -> no issues, 12 files
 .venv/bin/xat-practice gates
-    population: 4 items (lesson lesson-01-simple-interest)
-    admitted: 4   refused: 0  (rate 0.0 over 4)
+    population: 4 items = 1 lesson, lesson-01-simple-interest, pl_int:simple-interest
+      admitted: 4/4   refused: 0  (rate 0.0 over 4)
+    population: 4 items = 1 lesson, lesson-02-geometry-similarity, geo_mens:similarity-and-area-ratios
+      admitted: 4/4   refused: 0  (rate 0.0 over 4)
+    lessons: 2   items gated: 8   refused: 0 across 8
+.venv/bin/python tools/ui_probe.py --lesson lesson-02-geometry-similarity
+                                                          -> 47/47
 ```
+
+**`gates` reports PER LESSON, deliberately (D23).** It used to report over the
+pooled items, and with two lessons registered that admitted **0 of 8** and
+refused two items that are individually perfect: `G11` apportions the 20-item
+PAPER mix, and `MIX_ENFORCEMENT_FLOOR` is 8 — a number that meant "smaller than a
+paper" and that **two lessons now reach**. A paper rule has to be given a paper,
+so neither gate was loosened; each lesson is gated on its own and the pooled
+figure is labelled `NOT a score`.
 
 **That 96.64% is the second number this file has ever quoted for coverage, and
 the first was wrong.** It read `95.19%` and passed, because `cli.py` was absent
@@ -163,13 +177,21 @@ difference between reading a measurement and making one.
 ### Sit a lesson in the browser
 
 ```bash
-.venv/bin/xat-practice build     # writes out/lesson-01/
-.venv/bin/xat-practice serve     # http://127.0.0.1:8000/
+.venv/bin/xat-practice build     # writes out/lesson-01-simple-interest/ and
+                                 # out/lesson-02-geometry-similarity/
+.venv/bin/xat-practice serve     # lesson 1 at http://127.0.0.1:8000/
+.venv/bin/xat-practice serve --lesson lesson-02-geometry-similarity
 ```
+
+`serve --lesson` takes a **`lesson_id`** from the registry (a path also works). It
+used to take a path and default to `out/` — a directory of lesson directories — so
+the default served a listing and the second lesson was unreachable without knowing
+its exact path.
 
 `serve` binds **loopback only** and serves one directory. It exists for one
 reason: browsers block `fetch()` of a sibling JSON on `file://`, so opening
-`out/lesson-01/index.html` directly cannot load `paper.json`. Ctrl-C to stop.
+`out/lesson-01-simple-interest/index.html` directly cannot load `paper.json`.
+Ctrl-C to stop.
 
 It is **threaded**, and that is not an optimisation. It used to be a
 single-connection `TCPServer`, which parked its only thread forever the first
@@ -183,8 +205,9 @@ If the page ever shows **"The question could not be loaded"** instead of a
 question, that is the fetch failing, and the card will tell you why — including
 the case where `index.html` was opened directly rather than served.
 
-Currently served: **Lesson 1, Simple Interest, 4 questions.** There is no
-Geometry lesson yet.
+Written: **Lesson 1, Simple Interest** and **Lesson 2, Geometry (areas and
+similar shapes)**, four rungs each. The sections are still to come — see
+`docs/COVERAGE.md` for the ledger and `docs/DECISIONS.md` D14 for the order.
 
 ### The verbs
 
@@ -200,13 +223,14 @@ Geometry lesson yet.
 | `xat-practice coverage` | **the ledger**: trained / written / pending, trap capacity — see `docs/COVERAGE.md` |
 | `xat-practice agents` | rebuild `opencode.json` from `build_opencode.py` |
 
-`gates` and `levels` currently report on Lesson 1 only.
+`gates` and `levels` report **per lesson**, on purpose — see D23 in `docs/DECISIONS.md`.
 
 ### Check the UI in a real browser
 
 ```bash
 .venv/bin/xat-practice build
-.venv/bin/python tools/ui_probe.py                    # 38 checks, exit 1 on failure
+.venv/bin/python tools/ui_probe.py                    # 47 checks, exit 1 on failure
+.venv/bin/python tools/ui_probe.py --lesson lesson-02-geometry-similarity
 .venv/bin/python tools/ui_probe.py --shot-dir /tmp/ui # start/options/result PNGs
 ```
 
@@ -273,10 +297,11 @@ src/xat_practice/
   items.py           schema, derived difficulty, LEVEL_RECIPES
   gates.py           17 gates; GATE_IDS is normative
   lesson1.py         Lesson 1: Simple Interest, 4 rungs
+  lesson2.py         Lesson 2: Geometry, areas and similar shapes, 4 rungs
   bundle.py          static bundle + paper/key file split
   cli.py             8 verbs
   registry.py       every lesson that EXISTS, in one place
-tests/               254 tests, 8 modules
+tests/               292 tests, 9 modules
 tools/
   ui_probe.html       the probe page a browser actually runs
   ui_probe.py         serves the bundle, drives Chromium, reports

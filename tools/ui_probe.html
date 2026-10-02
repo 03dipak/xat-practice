@@ -163,15 +163,37 @@ function report(done) {
         teach.compareDocumentPosition(q('.card:not(.teach)')) &
         Node.DOCUMENT_POSITION_FOLLOWING ? true : false,
         'teach card precedes the question card');
-      record('the-teach-card-gives-the-formula', /P\s*x\s*R\s*x\s*T\s*\/\s*100/.test(t),
-        'formula present');
+      // DERIVED FROM THE LESSON'S OWN DATA, not hardcoded to Lesson 1.
+      // MEASURED 2026-10-02: these four checks asserted Lesson 1's regexes
+      // (`P x R x T / 100`, the words "Principal"/"Rate per annum", `/per year/`).
+      // Run against Lesson 2 they failed 4-for-4 -- and the failure was in the
+      // CHECK, not the page: Geometry's card is correct and the probe had no idea
+      // what correct looks like outside Simple Interest. Worse, `47/47` on Lesson 1
+      // was quoted as the UI being sound. It was the soundness of ONE lesson.
+      //
+      // Now each check asks a question that is true of any lesson: does the card
+      // render the formula the DATA says, does it define every legend term the
+      // DATA declares, and does it state a units rule at all. The content is the
+      // lesson's; the property is the probe's.
+      const T = window.TEACH || {};
+      const formula = String(T.formula || '');
+      record('the-teach-card-gives-the-formula',
+        formula.length > 0 && t.indexOf(norm(formula)) !== -1 && /[=/x]/.test(formula),
+        formula ? ('renders: ' + norm(formula)) : 'TEACH has no formula');
+      const legend = Array.isArray(T.legend) ? T.legend : [];
       record('the-teach-card-defines-every-symbol',
-        ['Principal', 'Rate per annum', 'Time'].every((w) => t.indexOf(w) !== -1),
-        'P, R and T all defined in words');
+        legend.length > 0 && legend.every((e) => t.indexOf(norm(e[0])) !== -1),
+        legend.length + ' legend terms: '
+        + legend.map((e) => e[0] + (t.indexOf(norm(e[0])) !== -1 ? '=yes' : '=NO'))
+              .join(', '));
+      const units = String(T.units || '');
       record('the-teach-card-states-the-units-rule',
-        /per year/i.test(t) && /year/i.test(t), 'units rule present');
-      record('the-teach-card-has-a-worked-example', /Worked example/i.test(t),
-        'example present');
+        units.length > 0 && t.indexOf(norm(units)) !== -1,
+        units ? 'units rule present' : 'TEACH has no units rule');
+      const example = String(T.example || '');
+      record('the-teach-card-has-a-worked-example',
+        example.length > 0 && t.indexOf(norm(example)) !== -1,
+        example ? 'example present' : 'TEACH has no example');
       // THE KEY MUST NOT BE ON SCREEN, and the check must be exact.
       //
       // MEASURED: the first version of this check looked for the substring "200"
@@ -179,18 +201,76 @@ function report(done) {
       // worked example's own numbers is worse than none -- an author would fix
       // the teaching to satisfy it. So it looks for Q1's KEY TEXT and for Q1's
       // PRINCIPAL, both of which are specific to question 1.
+      // THE LEAK CHECKS, DERIVED. These were Lesson 1's numbers written into the
+      // probe, so on any other lesson they would have PASSED VACUOUSLY -- a leak
+      // check that cannot see the lesson's own key is a check that reports safety
+      // it never looked for.
+      //
+      // `window.Q1` carries question 1's key text and every number in its stem, so
+      // the question is finally the real one: does this card hand over THIS
+      // lesson's answer?
+      const Q1 = window.Q1 || {};
+      const keyText = String(Q1.key_text || '');
+      // NUMBERS, NOT SUBSTRINGS. This is the second time this check has been
+      // defeated by containment, and the original comment in this file already
+      // recorded the first one: looking for "200" matched inside "2000".
+      //
+      // MEASURED 2026-10-02: deriving the leak numbers from the stem made it fire
+      // on Lesson 1, whose card is clean, reporting it "reuses Q1's numbers 10, 2".
+      // Those are the leading digits of the formula's own `/100` and of `2,000` in
+      // the worked example. Both numbers are genuinely ABSENT from the card; only
+      // their first characters are present. The remedy the file already prescribed
+      // is to extract the card's numbers too and compare the two sets, so
+      // containment cannot decide it.
+      const numsIn = (text) => {
+        const out = [];
+        const found = String(text).match(/\d[\d,]*(?:\.\d+)?/g) || [];
+        for (const raw of found) {
+          out.push(raw);
+          if (raw.indexOf(',') !== -1) out.push(raw.split(',').join(''));
+        }
+        return out;
+      };
+      // Scoped to the WORKED EXAMPLE, not the whole card -- and that scope is the
+      // finding. The card-wide version fired on Lesson 1 reporting "reuses Q1's
+      // numbers 10, 2". Those two numbers are in the LEGEND's explanations:
+      // "10% means you write 10" and "2 means two years". They illustrate what a
+      // rate and a time look like; neither computes Q1's answer, and Q1's answer is
+      // Rs 200, which the card does not contain.
+      //
+      // D18's rule is that the worked EXAMPLE must not be Q1 verbatim, because that
+      // is what hands over the key. Definition prose is allowed to mention a rate of
+      // 10%. So the comparison is between Q1's numbers and the EXAMPLE's numbers,
+      // and the answer-determining value -- the key text -- is checked separately
+      // against the whole card above.
+      const exNumsArr = numsIn(example);
+      const exNumSet = new Set(exNumsArr);
+      const q1Nums = (Q1.numbers || []).map(String).filter((n) => !n.includes(','));
       record('the-teach-card-does-not-leak-questions-key',
-        t.indexOf('Rs 200') === -1,
-        t.indexOf('Rs 200') !== -1 ? 'the card states Q1\'s answer'
-                                    : 'Q1 key text absent');
+        keyText.length > 0 && t.indexOf(keyText) === -1,
+        t.indexOf(keyText) !== -1 ? 'the card states Q1\'s answer (' + keyText + ')'
+                                  : 'Q1 key text (' + keyText + ') absent');
+      const reused = q1Nums.filter((n) => exNumSet.has(n));
       record('the-teach-card-does-not-reuse-questions-numbers',
-        t.indexOf('1,000') === -1 && t.indexOf('1000') === -1,
-        t.indexOf('1,000') !== -1 || t.indexOf('1000') !== -1
-          ? 'the card uses Q1\'s principal, so it hands over Q1\'s answer'
-          : 'Q1 principal absent; the example runs on 2,000');
+        q1Nums.length > 0 && reused.length === 0,
+        reused.length
+          ? 'the WORKED EXAMPLE reuses Q1\'s numbers ' + reused.join(', ')
+          : 'the example shares none of Q1\'s ' + q1Nums.length + ' numbers');
+      // And the positive half: the example must ACTUALLY carry numbers, or "no
+      // leak" is satisfied by an example that teaches nothing.
+      const exNums = Array.from(exNumSet);
       record('the-teach-card-uses-different-numbers-from-q1',
-        /2,?000/.test(t) && t.indexOf('Rs 200') === -1,
-        'example runs on 2,000 at 5% for 4 years, not 1,000 at 10% for 2');
+        exNums.length > 0 && exNums.every((n) => q1Nums.indexOf(n) === -1),
+        'example runs on ' + exNums.join(', ')
+        + (exNums.length
+            ? ' and none is Q1\'s'
+            // MEASURED: written as two adjacent string literals, which JavaScript
+            // does NOT concatenate -- `SyntaxError: Unexpected string` killed the
+            // whole probe script and the page went PENDING. The lesson.js file was
+            // broken this way for a whole wave and 161 tests passed, so every script
+            // in this repo is `node --check`ed.
+            : ' -- example has NO numbers, so it teaches nothing and no leak'
+              + ' is possible'));
     }
 
     const footText = norm(q('#foot').textContent);
@@ -313,8 +393,15 @@ function report(done) {
       keyFetchesBefore + ' fetches before check');
 
     // deliberately pick a WRONG option so the full teaching path runs
-    const expect = (window.EXPECTED || {})['L1-F'];
-    const wantWrong = expect === undefined ? 1 : (expect + 1) % 5;
+    // WHICH ITEM. MEASURED 2026-10-02: this was the literal 'L1-F', so pointing
+    // the probe at Lesson 2 made `expect` undefined, `wantWrong` NaN, and the click
+    // land on nothing -- five checks failed for that reason and not one of them was
+    // telling the truth about the page. The ladder under test now names its own
+    // first rung, from the same injected map the verdict is checked against.
+    const keys = Object.keys(window.EXPECTED || {});
+    const FIRST = keys[0];
+    const expect = (window.EXPECTED || {})[FIRST];
+    const wantWrong = (expect + 1) % 5;
     opts[wantWrong].click();
     record('exactly-one-option-is-selected', qa('.opt.sel').length === 1, qa('.opt.sel').length + ' selected');
 

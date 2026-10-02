@@ -214,13 +214,15 @@ JS = r"""
 // so none of it belongs in the global scope.
 (() => {
 
-const ORDER = ['L1-F', 'L1-E', 'L1-M', 'L1-H'];
-const LABEL = {
-  'L1-F': 'FOUNDATION', 'L1-E': 'EASY',
-  'L1-M': 'MEDIUM',   'L1-H': 'HARD',
-};
+// The ladder is DATA, read from paper.json. MEASURED 2026-10-02: this was a
+// hardcoded list of Lesson 1's four ids, so registering Lesson 2 produced a page
+// that showed Lesson 1's stems with Lesson 2's key file -- the first screen and
+// the answers came from different lessons. Deriving it removes a whole class of
+// half-wired state.
+let ORDER = [];
+let LABEL = {};
 const state = { i: 0, commit: null, pick: null, meta: null, build: null,
-                teach: {}, log: [] };
+                teach: {}, total: 0, title: '', subtopicLabel: '', log: [] };
 let paperCache = null;
 
 // paper.json holds ONLY what the learner is allowed to see: the stem, the
@@ -231,7 +233,14 @@ let paperCache = null;
 // next question blanked the stage and re-downloaded the file. Four questions,
 // four round trips, four flashes of empty page. The promise is cached instead,
 // so questions 2-4 resolve from memory.
-async function loadPaper(id) {
+async function loadPaper() {
+  // No `id` argument, on purpose. MEASURED 2026-10-02: this took the id and
+  // `render()` computed `const id = ORDER[state.i]` BEFORE calling it -- which
+  // worked only because ORDER was a hardcoded literal of Lesson 1's four ids.
+  // The moment ORDER became data read from this file, the first call passed `''`
+  // (the array was still empty), `find` returned undefined, and the page went
+  // blank with no error. **Reading the id after the load is the whole fix**, and
+  // the dependency is now impossible to reintroduce by passing one in.
   if (!paperCache) {
     paperCache = fetch('paper.json', { cache: 'no-store' }).then(r => {
       if (!r.ok) throw new Error('paper.json returned HTTP ' + r.status);
@@ -241,7 +250,14 @@ async function loadPaper(id) {
   const all = await paperCache;
   state.build = all.build || 'unknown';
   state.teach = all.teach || {};
-  return all.items.find(i => i.id === id);
+  state.total = all.items.length;
+  state.title = all.title || '';
+  state.subtopicLabel = all.subtopic_label || '';
+  // The ladder and its labels come from the paper, not from this file.
+  ORDER = all.items.map(i => i.id);
+  LABEL = {};
+  all.items.forEach((i) => { LABEL[i.id] = String(i.level).toUpperCase(); });
+  return all.items[state.i];
 }
 
 // answerkey.json holds `k`, every solution and every misconception. It is
@@ -315,27 +331,29 @@ function teachCard(t) {
 }
 
 async function render() {
-  rungBar();
-  const id = ORDER[state.i];
   const stage = document.getElementById('stage');
 
-  // PAINTED FIRST, FETCHED SECOND. This assignment happens before any await, so
-  // the first screen is never empty and never mistaken for a broken page.
+  // PAINTED FIRST, FETCHED SECOND. No await has happened yet, so the first screen
+  // is never empty and never mistaken for a broken page. It deliberately does NOT
+  // name a rung: ORDER is only known after the paper arrives.
   stage.innerHTML = `
     <div id="teachSlot"></div>
     <div class="card">
-      <div class="qno">${LABEL[id]} &middot; question ${state.i + 1} of 4</div>
+      <div class="qno">Loading the lesson</div>
       <div class="stem pending">Loading the question&hellip;</div>
     </div>`;
 
 
   let meta;
   try {
-    meta = await loadPaper(id);
+    meta = await loadPaper();
   } catch (err) {
-    fail(stage, id, err);
+    fail(stage, 'this question', err);
     return;
   }
+  // The id is read HERE, after the paper has supplied it.
+  const id = ORDER[state.i];
+  rungBar();
   state.meta = meta;
 
   // SHOW THE BUILD. If the screen says a build that is not the current one, the
@@ -352,7 +370,7 @@ async function render() {
   stage.innerHTML = `
     <div id="teachSlot"></div>
     <div class="card">
-      <div class="qno">${LABEL[id]} &middot; question ${state.i + 1} of 4</div>
+      <div class="qno">${LABEL[id]} &middot; question ${state.i + 1} of ${state.total}</div>
       <div class="stem">${esc(meta.stem)}</div>
 
       <div id="commitBox">
@@ -373,6 +391,11 @@ async function render() {
 
       <div id="result" class="hidden"></div>
     </div>`;
+
+  const head = document.querySelector('h1');
+  const sub = document.querySelector('.sub');
+  if (head && state.title) head.textContent = state.title;
+  if (sub && state.subtopicLabel) sub.textContent = state.subtopicLabel;
 
   // The teaching card, on question 1 only. It is NOT on later rungs: the point is
   // to read it once before the ladder starts, and repeating it four times is the
@@ -459,13 +482,13 @@ async function check() {
     <ul class="sol">${meta.solution.map(s => `<li>${esc(s)}</li>`).join('')}</ul>
     <div class="qcell on" style="margin-top:8px"><div class="t">Where you landed</div>
       <div>${esc(cell)}</div></div>
-    <button id="next">${state.i < 3 ? 'Next question' : 'Finish lesson'}</button>`;
+    <button id="next">${state.i < state.total - 1 ? 'Next question' : 'Finish lesson'}</button>`;
   document.getElementById('result').classList.remove('hidden');
   document.getElementById('next').onclick = next;
 }
 
 function next() {
-  if (state.i === 3) return finish();
+  if (state.i >= state.total - 1) return finish();
   state.i += 1;
   state.commit = null; state.pick = null;
   render();
@@ -477,7 +500,7 @@ function finish() {
   document.getElementById('stage').innerHTML = `
     <div class="card">
       <div class="qno">Lesson complete</div>
-      <div class="stem">You worked through Simple Interest at four levels.</div>
+      <div class="stem">You worked through every level of this subtopic.</div>
       <div class="qcell on" style="margin-top:8px"><div class="t">Where you landed</div>
         ${rows.length ? rows.map(r => `<div style="margin-top:6px">
           <strong>${esc(r.level)}</strong> &middot;
@@ -562,9 +585,19 @@ def build_lesson(lesson_id: str, items: tuple[Item, ...],
                                    for r in refused)
         )
 
+    from .syllabus import subtopics as _subs
+
+    lesson_title = lesson_id.split("-")[1].replace("-", " ").title()
+    (subtopic_label,) = [_subs()[items[0].subtopic_id].name]
+
     paper: dict[str, object] = {
         "lesson_id": lesson_id,
         "subtopic": items[0].subtopic_id,
+        # The page's own heading. MEASURED 2026-10-02: `index.html` had "Lesson 1
+        # - Simple Interest" written into it, so every lesson after the first
+        # would have been titled with the first one's name.
+        "title": lesson_title,
+        "subtopic_label": subtopic_label,
         # D18: TEACH THEN ASK. MEASURED 2026-10-02 by `viewer`: the formula first
         # reached the screen only AFTER question 1 was answered, so a learner who
         # did not know the formula could not learn it here. This block is rendered

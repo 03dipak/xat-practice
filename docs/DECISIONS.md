@@ -1326,3 +1326,166 @@ measurement. Neither was used to add, remove or reweight a topic.
 (`PaperShapeSpec`), and the ledger's own rows are a `SubtopicRow` TypedDict, so a
 typo in a spec key is a type error rather than a string comparison that quietly
 fails.
+
+---
+
+## 14. D23 — gate PER LESSON, because a pool of lessons is not a paper
+
+### 14.1 The measurement
+
+Registering Lesson 2 made `xat-practice gates` report **0 of 8 admitted** and
+refuse two items that are individually perfect:
+
+```
+population: 8 items across 2 lesson(s)
+G11_mix_within_tolerance  L2-F  foundation over quota (1/1)
+G15_key_not_predictable    L1-F  answering B on every question scores +0.75 of
+                                 a possible +7.00, above the 0.70 ceiling
+```
+
+Gated **per lesson** the same eight items give **4/4 and 4/4, zero refusals**.
+
+### 14.2 Why both refusals are wrong, and neither gate is loosened
+
+`G11` apportions the **20-item PAPER mix**. `MIX_ENFORCEMENT_FLOOR` is **8**, and
+that number was chosen to mean "smaller than a paper". **Two lessons now reach
+it**, so a paper-shaped rule ran against something that is not a paper, and it
+reported a *quota* — "foundation over quota (1/1)" — about a document with no
+quota.
+
+`G15` measured "answering B throughout both lessons" as a strategy worth taking.
+True of the pool and meaningless in practice: no candidate is handed both lessons
+in one sitting, and no XAT paper contains two Simple Interest items and two
+Geometry items at the same key indices.
+
+**The rule.** A paper rule is given a paper. `cmd_gates` and `cmd_levels` now
+iterate `LESSONS` and report one population per lesson, where the denominator is
+unambiguous. The pooled total is still printed, labelled `NOT a score`.
+
+This is D12's defect one level up. D12 removed `G11` from lessons, correctly,
+because applied to 4 items it deleted the hard rung. Nothing then stopped the
+**pool of lessons** from becoming the new fake paper. Two fixes are not one fix.
+
+### 14.3 `lesson_id` was lost from the output, and put back
+
+Going per-lesson silently dropped `lesson_id` from the report while keeping
+`subtopic_id`. `lesson_id` is the bundle directory **and** the URL a learner is
+given, so the change made two lessons indistinguishable in the output. Caught by
+a test asserting every lesson is named; the verb was wrong, not the test.
+
+### 14.4 Retired: `registry.all_items()` and `registry.by_id()`
+
+`all_items()` had exactly one caller — `cmd_gates` — and D23 removed it. `by_id()`
+never had one. Both were deleted rather than given a test: **a function with no
+caller, made to pass by a test that imports it, is the coverage-floor defect with
+extra steps.** An imported line is measured; an unreachable one is not.
+
+## 15. D24 — a LESSON must derive one item per level
+
+### 15.1 The measurement
+
+Lesson 2's first build produced:
+
+```
+L2-F  easy  score 1.65  ['single move', '4 distractors are real computed near-misses']
+L2-E  easy  score 2.50
+L2-M  medium 4.55
+L2-H  hard  7.40
+```
+
+**1.65 is above the 1.50 boundary, so the FOUNDATION rung derived as EASY and the
+lesson had no foundation rung at all.** The cause is arithmetic, not judgement:
+the base score is 0.85 and each real near-miss adds 0.2, so flagging **all four**
+distractors gives `0.85 + 0.8 = 1.65`. `LEVEL_RECIPES[FOUNDATION]` asks for **two**.
+
+Nothing reported it:
+
+- `G11` — does not run on a four-item lesson (`MIX_ENFORCEMENT_FLOOR` is 8).
+- `G7` — compares `claimed_level` to the derived level, and `claimed_level` is
+  `None` on every authored item, so it has nothing to compare.
+- `G8` — asks for at least two real near-misses. Four satisfies it.
+
+So a lesson could lose a rung silently, and did. `L2-F` now keeps exactly two
+real near-misses — the dropped halving (`180`) and the double halving (`45`) —
+and derives `foundation` at **1.25**, matching `LEVEL_RECIPES` exactly.
+
+### 15.2 The guard, and where it lives
+
+`registry._assert_one_rung_per_level` refuses a lesson that does not derive one
+item per level, and it names the missing rung. It is **not** a new gate and `G11`
+is **not** re-enabled on lessons: D12's measurement still stands. This check
+belongs to the lesson, not to the paper.
+
+### 15.3 Ordering is normative, and got it wrong once already
+
+The rung check was written to run **first**, and a deliberately malformed
+two-item lesson was then reported as "has no item that derives medium, hard".
+The lesson was wrong for **two** reasons and the report named the less useful one.
+The **one-subtopic** check now runs first, because a lesson spanning two
+subtopics is a MOCK and that is the more important fact. The ordering is commented
+in place because it has already been got wrong.
+
+## 16. D25 — a UI check must be able to see the lesson it is checking
+
+### 16.1 The measurement
+
+Aiming the existing probe at Lesson 2 — **same runner, same 47 checks** — gave
+**42/47**. Five checks asserted **Lesson 1's own content**, written into
+`tools/ui_probe.html`:
+
+| check | was hardcoded to |
+|---|---|
+| `the-teach-card-gives-the-formula` | `P x R x T / 100` |
+| `the-teach-card-defines-every-symbol` | `Principal`, `Rate per annum`, `Time` |
+| `the-teach-card-states-the-units-rule` | `/per year/` |
+| `the-teach-card-uses-different-numbers-from-q1` | `2,000`, `1,000`, `Rs 200` |
+| `the-verdict-names-the-answer-letter` | the literal item id `L1-F` |
+
+Four failed because Geometry's card is correct and the check did not know it. The
+fifth is worse: `L1-F` is not in Lesson 2, so `expect` was `undefined`,
+`wantWrong` was `NaN`, and the probe clicked **nothing**. Five checks reported on a
+page they had not read.
+
+**`47/47` was the soundness of one lesson** and was quoted as the soundness of the
+UI. This is the coverage-floor defect one level up: an invisible file cannot drag
+a floor down, and an invisible lesson cannot make a UI gate fail.
+
+### 16.2 The rule
+
+Every check is now derived from the **bundle under test**: `EXPECTED` (already
+was), plus `TEACH` and `Q1` — question 1's key text and every number in its stem,
+read from the same `paper.json` / `answerkey.json` the page is served from. The
+content is the lesson's; the **property** is the probe's.
+
+`--lesson` was added so any registered lesson can be targeted, and
+`tests/test_render.py` now runs the probe **once per registered lesson** and
+parametrises two gates over them, so a failure names the bundle that broke.
+
+### 16.3 A leak check that cannot see the key is not a leak check
+
+The two leak checks searched for `"Rs 200"` and `"1,000"`. Against Geometry those
+strings are absent — so they **passed**, and would have passed on a page printing
+Geometry's answer in the teaching card. A check that cannot fail on the bug it
+names is not evidence.
+
+Derived, they immediately found a real over-reach of their own: reporting that
+Lesson 1's card "reuses Q1's numbers 10, 2". Both are in the **legend's**
+explanations — `"10% means you write 10"` and `"2 means two years"` — they
+illustrate a rate and a time, and neither computes Q1's answer (`Rs 200`, which
+the card does not contain). So the comparison is scoped to the **worked example**,
+which is what D18's rule is about, and the answer-determining **key text** stays
+checked against the whole card.
+
+This is the second time containment defeated this check, and `ui_probe.html`
+already recorded the first: `"200"` is inside `"2000"`. It is now solved by
+extracting the card's numbers too and comparing **sets**.
+
+### 16.4 Adjacent JavaScript literals are not concatenation
+
+Two adjacent `'...'` literals with no `+` between them — which Python's implicit
+concatenation handles silently — gave `SyntaxError: Unexpected string`. The whole
+probe script died and the page reported `PENDING`, a state that reads like a slow
+network rather than a broken gate. `lesson.js` shipped broken this exact way for a
+whole wave past **161 passing tests**, so
+`test_the_probe_script_actually_parses` now runs `node --check` on every inline
+block of `tools/ui_probe.html`, joining the node-free quote-parity check.

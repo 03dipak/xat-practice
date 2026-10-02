@@ -381,7 +381,14 @@ def test_a_failed_paper_fetch_names_the_reason_instead_of_leaving_a_blank_page(o
     js = on_disk["lesson.js"]
     render = js[js.index("async function render()"):js.index("async function check()")]
     assert "catch" in render, "the paper load is unguarded"
-    assert "fail(stage, id, err)" in render, "a failure must be rendered, not swallowed"
+    # The literal was `fail(stage, id, err)` and `id` is no longer in scope at the
+    # catch, because the id is read AFTER the paper loads (see `loadPaper`). So
+    # the assertion moves to what the test is actually for: the error reaches the
+    # screen instead of being swallowed into a blank page.
+    assert "catch (err)" in render, "the paper load must have a catch"
+    assert "fail(stage," in render and "err)" in render, (
+        "a failure must be rendered, not swallowed"
+    )
     fail = js[js.index("function fail("):js.index("async function render()")]
     assert "file://" in fail, (
         "the most common cause is opening index.html directly, where a browser "

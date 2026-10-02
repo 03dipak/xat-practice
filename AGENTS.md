@@ -232,6 +232,51 @@ teach.
   `ORDER` and `render` were global, and a probe's own `check()` silently replaced
   `lesson.js`'s — the page stopped working with no error. `ui_probe.py` is the
   reason this is now pinned.
+- **`ORDER` is DATA, and the id is read AFTER the paper loads.** MEASURED
+  2026-10-02: `ORDER` was a hardcoded literal of Lesson 1's four ids, so
+  registering Lesson 2 produced a page showing **Lesson 1's stems with Lesson 2's
+  key file** — first screen and answers from different lessons. It now comes from
+  `paper.json`. The trap that came with it: `loadPaper(id)` took the id, and
+  `render()` computed `const id = ORDER[state.i]` **before** calling it, which
+  worked only because `ORDER` was a literal. Derived, the first call passed `''`,
+  `find` returned `undefined`, and the page went blank with no error. **`loadPaper`
+  takes no id** so the dependency cannot be reintroduced.
+- **A paper gate must be given a paper.** MEASURED: with two lessons registered,
+  `gates` over the pooled 8 items admitted **0 of 8** and refused `L2-F`
+  ("foundation over quota (1/1)") and `L1-F` — both individually perfect. `G11`
+  apportions the 20-item PAPER mix and `MIX_ENFORCEMENT_FLOOR` is **8**, a number
+  chosen to mean "smaller than a paper", which **two lessons now reach**. `G15`
+  likewise measured a fixed-letter strategy across a pool no candidate is ever
+  handed. `cmd_gates`/`cmd_levels` now iterate `LESSONS` (D23). This is D12's
+  defect one level up: removing `G11` from lessons left the *pool of lessons* free
+  to become the new fake paper.
+- **A lesson must derive one item per level.** MEASURED: Lesson 2's first build
+  gave `L2-F` **1.65 — EASY**, because all four distractors were flagged real
+  near-misses and `0.85 + 4×0.2` crosses the 1.50 line. The lesson had **no
+  foundation rung** and nothing said so: `G11` does not run on 4 items, `G7`
+  compares a `claimed_level` that is `None` on every authored item, `G8` is
+  satisfied by four. `registry._assert_one_rung_per_level` now refuses it (D24).
+  **A flag on a distractor is a difficulty knob**, so four "real" near-misses on a
+  one-step item is arithmetic, not taste.
+- **A UI check must be able to see the lesson it is checking.** MEASURED: the same
+  probe, same 47 checks, aimed at Lesson 2 gave **42/47** — four checks asserted
+  Lesson 1's formula/legend/units/example as literals, and the fifth clicked the
+  literal item id `L1-F`, which is not in Lesson 2, so it clicked **nothing** and
+  reported on a page it had not read. `47/47` was one lesson, quoted as the UI.
+  `EXPECTED`, `TEACH` and `Q1` are now injected from the bundle under test, and
+  `tests/test_render.py` runs the probe **once per registered lesson** (D25).
+  **Run the probe at every lesson before believing a UI number.**
+- **A leak check that cannot fail on the bug it names is not evidence.** The two
+  leak checks searched for `"Rs 200"` and `"1,000"`; against Geometry those are
+  absent, so they passed — and would have passed on a page printing Geometry's
+  answer. Second time **containment** has beaten this check (`"200"` is inside
+  `"2000"`, then `"10"` inside `"100"`), so numbers are compared as **sets**
+  extracted from both sides. And the comparison is scoped to the **worked
+  example**: Lesson 1's card was wrongly accused of reusing Q1's `10` and `2`,
+  which live in its legend's explanations (`"10% means you write 10"`).
+- **`serve --lesson` takes a lesson_id, not a path.** It defaulted to `out/`, a
+  directory of lesson directories, so the default served a listing and the second
+  lesson was unreachable without knowing its exact path.
 - **`uv sync` PRUNES.** It removes anything in `.venv` that is not declared in
   `pyproject.toml`. Before `[dependency-groups] dev` existed it deleted mypy,
   pytest, pytest-cov and ruff — the four tools the gates are run with. Declare
