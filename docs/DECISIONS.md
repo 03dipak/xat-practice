@@ -210,7 +210,7 @@ computed near-misses, and `G12` requires every distractor to carry a **distinct
 non-empty `misconception`** naming the wrong idea the student actually holds.
 
 The traps are not free text. They are enumerated in `syllabus.SUBTOPICS` —
-**90 named traps across 40 subtopics** — and each becomes a distractor. A trap we
+**104 named traps across 40 subtopics** — and each becomes a distractor. A trap we
 cannot name is a trap we cannot set.
 
 A test asserts every trap is at least 5 words: a trap that does not say what the

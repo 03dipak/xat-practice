@@ -112,9 +112,9 @@ def totals() -> dict[str, int]:
     written = len(subtopics_written())
     rows = subtopic_rows()
     return {
-        "sections_in_part1": len(S.PAPER_SHAPE["part1"]),
-        "questions_in_part1": sum(S.PAPER_SHAPE["part1"].values()),
-        "qa_di": S.PAPER_SHAPE["part1"]["qa_di"],
+        "sections_in_part1": len(S.EXAMS["xat"].counted()),
+        "questions_in_part1": S.EXAMS["xat"].counted_questions,
+        "qa_di": S.SECTIONS["xat:qa_di"].questions,
         "topics": len(S.TOPICS),
         "subtopics_trained": trained,
         "subtopics_written": written,

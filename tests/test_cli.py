@@ -82,9 +82,22 @@ def test_levels_prints_the_derived_level_and_its_drivers(capsys):
 
 
 def test_build_writes_the_lesson_and_names_the_rungs(capsys):
+    """The path is checked against `out_dir`, not against a literal.
+
+    MEASURED 2026-10-02: the exam layer nested the output to
+    `out/xat/qa_di/<lesson>/`, and this test still asserted the old flat path --
+    it failed loudly, which was lucky. A test that pins a path in prose has to be
+    edited by hand every time the layout moves, and that is where a stale fixture
+    hides."""
     assert cli.cmd_build(None) == 0
     out = capsys.readouterr().out
-    assert "built out/lesson-01-simple-interest/" in out
+    from xat_practice.bundle import out_dir
+
+    first = LESSONS[0]
+    assert f"built {out_dir(first.lesson_id).relative_to(Path.cwd())}/" in out, (
+        "the build must name where it actually wrote, derived from the same "
+        "function that writes it -- not a path typed into a test"
+    )
     for item_id in ("L1-F", "L1-E", "L1-M", "L1-H"):
         assert item_id in out
 
@@ -110,7 +123,7 @@ def test_weightage_raises_before_printing_if_the_table_does_not_close(monkeypatc
     """The verb must not print a broken table and then complain."""
     from xat_practice import syllabus as S
 
-    bad = S.Topic("fake", "Fake", (1,) * 7, True)
+    bad = S.Topic("fake", "xat", "qa_di", "Fake", (1,) * 7, True)
     monkeypatch.setattr(S, "TOPICS", (*S.TOPICS, bad))
     with pytest.raises(ValueError, match="The table is wrong, not the exam"):
         cli.cmd_weightage(None)
@@ -492,13 +505,35 @@ def test_the_registry_refuses_a_second_lesson_on_one_subtopic():
 
 
 def test_the_bundle_directory_is_derived_from_the_lesson_id():
-    """MEASURED: `out/lesson-01` was hardcoded, so a second lesson had nowhere to
-    live and `--lesson` defaulted to a directory that might not be the one you
-    meant."""
+    """MEASURED twice, and the second measurement is the point.
+
+    First: `out/lesson-01` was hardcoded, so a second lesson had nowhere to live.
+    Fixed to `out/<lesson_id>/` -- and this test asserted `out_dir("a").name == "a"`,
+    i.e. that ANY string produced a path, because "the path must come from the id".
+
+    Then the exam layer landed. The path is now
+    `out/<exam>/<section>/<lesson>/`, which cannot be derived from the id alone --
+    the exam and section live in the registry. So the id is now RESOLVED against the
+    registry, and an unknown one raises.
+
+    That is a stricter contract, not a relaxed test: `out_dir("a")` used to quietly
+    create `out/a/` for a lesson that does not exist, so a typo wrote to a directory
+    nothing ever read and the build still reported success.
+    """
     from xat_practice.bundle import out_dir
 
-    assert out_dir("lesson-01-simple-interest").name == "lesson-01-simple-interest"
-    assert out_dir("a").name == "a", "the path must come from the id, not a constant"
+    first = LESSONS[0]
+    dest = out_dir(first.lesson_id)
+    assert dest.name == first.lesson_id
+    assert dest.parent.name == first.section_id, (
+        f"the path must carry the section: {dest}"
+    )
+    assert dest.parent.parent.name == first.exam_id, (
+        f"the path must carry the exam: {dest}"
+    )
+    # Two lessons in different sections could not collide.
+    with pytest.raises(KeyError, match="no lesson"):
+        out_dir("a")
 
 
 # ---------------------------------------------------------------------------

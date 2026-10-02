@@ -415,11 +415,19 @@ FULL_MOCK = PaperShape(
 )
 
 
-def expected_ev(*, options: int = 5, mark_correct: int = 1,
+def expected_ev(*, options: int = 5, mark_correct: float = 1.0,
                 mark_wrong: float = -0.25, blanks: int = 0,
                 blank_penalty_after: int = 8,
                 blank_penalty: float = -0.10) -> float:
     """Expected marks from guessing at random.
+
+    `mark_correct` is `float`, not `int`. MEASURED 2026-10-02: it was `int = 1`, and
+    the first caller to hold a marking scheme whose correct mark was not an integer
+    literal -- CAT's reported +3, passed through `SectionSpec.mark_correct: float` --
+    was a mypy error. An over-narrow annotation on a generic function is the same
+    defect as `gates.run(items: list[Item])`: it forces callers to lie about their
+    data to satisfy the type. XAT's own +1 is an integer by coincidence of the
+    paper, not by property of the function.
 
     Measured, not argued. For the verified XAT 2026 shape this is EXACTLY 0.0
     with 5 options -- +1/5 and -0.25x4/5 cancel -- so random guessing is a

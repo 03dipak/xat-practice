@@ -282,7 +282,8 @@ teach.
   typed the documented command and got Simple Interest with nothing saying a
   choice existed. Safe by being invisible. `menu.py` now asks, orders by measured
   topic weight, prints `2 of 40 subtopics written` rather than hiding the 38, and
-  reads every paper figure from `syllabus.PAPER_SHAPE`. Junk input returns None —
+  reads every paper figure from `syllabus.EXAMS` / `syllabus.SECTIONS`. Junk input
+  returns None —
   **never the first lesson**, which is the bug in a new dress.
 - **The LEVEL is the learner's; the MIX is only for a paper (D26).**
   `LEVEL_MIX` 10/25/40/25 → 2/5/8/5 at n=20 is *derived* from 136 s/question, so it
@@ -340,6 +341,7 @@ All re-derivable. Command, population, and limitation stated each time.
 ```
 uv run ruff check src tests tools
 uv run mypy src
+uv run python -c "import xat_practice.cli"   # a green linter is not a green build
 uv run pytest -q --strict-markers --cov
 uv run coverage report --include="src/xat_practice/*.py" \
     --fail-under=95 --precision=2
@@ -377,3 +379,89 @@ speed the suite up.- **Navigation is a PAGE, not a prompt. MEASURED 2026-10-02, 
   therefore **structural**: `render()` clears `state.commit`/`state.pick` itself,
   so no caller can get it wrong, and the text-level pin is in `test_bundle.py`
   rather than pretending a DOM check can see it.
+
+## The exam layer (2026-10-02)
+
+- **The exam is a DATA dimension, and there is exactly one entry.** `syllabus.EXAMS`
+  is `{xat: ...}` and `syllabus.SECTIONS` is keyed `"<exam>:<section>"`. `Topic` gained
+  `exam_id`/`section_id` as **required fields with no default**, stated 17 times rather
+  than assumed once — a defaulted parent is a silent parent. `Lesson.exam_id` /
+  `section_id` are **derived properties**, never fields (D20: two homes for one fact
+  is the D12 shape). The LLD is `docs/LLD.md`.
+- **Marking lives on `SectionSpec`, not on the paper.** XAT 2026 is −0.25 throughout
+  Part 1 with GK excluded; CAT is reported to differ *per section*. And the EV
+  arithmetic is not a constant of the universe: `+1/−0.25` at 5 options gives
+  **exactly 0.0000**, while `+3/−1` gives **−0.2000**, so the advice inverts to
+  never-guess. **A first version of `SectionSpec.guess_ev` hardcoded `1.0` and
+  returned −0.6000**; it dropped `mark_correct` and was a second implementation of
+  the `items.expected_ev` that already existed. It now delegates.
+- **`counted_questions` ≠ `total_questions`.** XAT is 95 questions but only 75 decide
+  the percentile, because GK is excluded by XLRI. Any denominator that says 95 is off
+  by a quarter and still looks rigorous.
+- **A GREEN LINTER IS NOT A GREEN BUILD.** MEASURED 2026-10-02: deleting
+  `syllabus.PAPER_SHAPE` and updating `syllabus.py` left `menu.py` importing a name
+  that no longer existed. `ruff` **passed** — it cannot see a name deleted from
+  another module — while `import xat_practice.cli` raised `ImportError` and four test
+  modules failed to collect. Always run `uv run python -c "import xat_practice.cli"`
+  after a rename. Both reviewing agents found the broken package in a tree that
+  linted clean.
+- **A rename that leaves a consumer broken is not a rename.** The LLD estimated "3 src
+  sites" for `PAPER_SHAPE`; the measured figure was **2 modules / 15 references, plus
+  2 test modules and 2 documents**. Grep for the name before claiming its blast radius.
+- **`self_check()` owns TABLE invariants; `registry` owns LESSONS.** The exam/section
+  closure lives in `syllabus._check_exam_layer()`, beside the 28-closure it already
+  guarded. Both dicts closed **by luck** until then — nothing asserted that
+  `total_questions` equalled the section sum.
+- **A composite key needs BOTH directions checked.** MEASURED: rewriting
+  `SECTIONS["xat:qa_di"]` to carry `exam_id="cat"` made `section_of()` return the CAT
+  spec for an XAT topic — the key said one exam, the value another, and only one was
+  read. A join that is a convention is a join that drifts.
+- **Two falsifying-input tests were broken by adding a required field, and both were
+  broken the SAME way**: they constructed a `Topic` by hand, and one of them broke the
+  28-closure first, so the assertion it made was never reached. When you add a
+  required field, re-run the tests that *construct* the type — they are the ones that
+  will look like unrelated failures.
+
+## Five reviews of the exam layer (2026-10-02)
+
+`docs/ADOPT_REJECT.md` records every verdict with its evidence. What must be
+remembered without opening it:
+
+- **The blank penalty is a PART fact.** XAT's "-0.10 after the first eight" applies
+  across all **75 Part 1 questions**, so eight free blanks in total. It sat on
+  `SectionSpec` for a day, which implied eight free blanks *per section* — a
+  learner told that skips 24 and loses about 1.6 marks. **A wrong default is not
+  neutral here; it is a false attempt strategy, and strategy is the product.**
+  `PartSpec` now owns the clock, the penalty and `in_percentile`.
+- **A section is a MIX of strata.** QA&DI holds 37 QUANT and 3 LOGIC subtopics
+  (`ds:sufficiency-statements`, `puzzle:routing-and-network-puzzles`,
+  `venn:venn-counting`). A single `SectionSpec.stratum` was a lie. `strata()`
+  derives it.
+- **"37% of percentile" was wrong.** 28/75 is 37.33% of Part 1 **raw-score question
+  count**. Percentile depends on cohort, scaling and sectional cutoffs, none of
+  which we measure — so every percentile figure this project prints is
+  `UNMEASURED`, and raw score is always reported beside it.
+- **EV = 0 does not mean "guessing is good."** It is measured against a skip worth
+  0.0. Below eight blanks a guess is merely **neutral** — guess only after
+  eliminating. Past eight, a skip costs −0.10, so guessing is **+0.10 better** —
+  always answer.
+- **DI is not next.** It is the biggest block (6.71 q/yr) and it is *not reachable*:
+  `avg_ratio` has 0 of 3 subtopics written and `pct` is 0.0 UNMEASURED. Percentages
+  / ratio / averages come first, and "next" must mean *the highest-weight node whose
+  prerequisites are satisfied*.
+- **Phase E is split, not parked.** Para-jumbles, arrangement/constraint sets and
+  syllogisms have keys that are true **by construction** — that is what
+  `Stratum.LOGIC` means, and it is already 3 subtopics wide. Only RC inference and
+  ethical caselets are `DELEGATED`.
+- **A text search cannot tell prose from code.** Two guard tests written for this
+  change fired on *correct* code (a docstring naming a deleted constant; a field
+  that had *moved* rather than been deleted). Both were rewritten with `ast` or
+  narrowed. **A check that fires on correct output teaches its reader to ignore it.**
+- **A green linter is not a green build.** Re-introducing the deleted import two
+  ways proved it: with the name *unused*, ruff flags it; with it *imported and
+  used* — as the original break was — ruff passes and the package does not import.
+  `tests/test_import_smoke.py` now gates the import, the per-module imports and the
+  full `--collect-only`, all as subprocesses.
+- **Verifying a fix requires proving you applied it.** My first attempt to
+  re-break the import printed `substitution applied: False` and I nearly recorded a
+  false finding that the new guard was useless.

@@ -50,7 +50,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .registry import LESSONS
-from .syllabus import PAPER_SHAPE, TOPICS, Subtopic
+from .syllabus import EXAMS, SECTIONS, TOPICS, ExamSpec, SectionSpec, Subtopic, part_of_id
 
 #: Which Part-1 section each topic belongs to. The syllabus trains QA&DI only
 #: (D7), so this is the whole truth about the other two sections rather than a
@@ -60,13 +60,22 @@ SECTION_QA_DI = "QA&DI"
 
 @dataclass(frozen=True, slots=True)
 class Entry:
-    """One selectable line: a written lesson."""
+    """One selectable line: a written lesson, placed in the exam/section tree."""
 
     lesson_id: str
+    exam_id: str
+    section_id: str
     topic_id: str
     subtopic_id: str
     label: str
     subtopic_label: str
+
+    @property
+    def href(self) -> str:
+        """Where the link goes. Includes the exam, so two exams cannot collide on a
+        `lesson_id` -- and so the URL shape `/<exam>/<section>/<lesson>/` is the same
+        whether one exam or six are loaded."""
+        return f"{self.exam_id}/{self.section_id}/{self.lesson_id}/"
 
 
 def written_entries() -> list[Entry]:
@@ -82,11 +91,15 @@ def written_entries() -> list[Entry]:
     out: list[Entry] = []
     for lesson in LESSONS:
         sub = subs.get(lesson.subtopic_id)
+        # `lesson.exam_id`/`section_id` are DERIVED on the registry, not stored
+        # here, so a topic cannot be filed under two parents (D20).
         out.append(Entry(
             lesson_id=lesson.lesson_id,
-            topic_id=lesson.subtopic_id.split(":", 1)[0],
+            exam_id=lesson.exam_id,
+            section_id=lesson.section_id,
+            topic_id=lesson.topic_id,
             subtopic_id=lesson.subtopic_id,
-            label=_topic_name(lesson.subtopic_id.split(":", 1)[0]),
+            label=lesson.topic_label,
             subtopic_label=sub.name if sub else lesson.subtopic_id,
         ))
     return sorted(out, key=lambda e: (order.get(e.topic_id, 0.0), e.subtopic_id))
@@ -112,28 +125,70 @@ def _topic_name(topic_id: str) -> str:
     return topic_id
 
 
-def paper_shape_lines() -> list[str]:
-    """The XAT 2026 shape, read from `PAPER_SHAPE` rather than restated."""
-    part1 = PAPER_SHAPE["part1"]
-    total = PAPER_SHAPE["total_questions"]
-    part2 = PAPER_SHAPE["part2"]
-    return [
-        f"XAT 2026 -- {total} questions, Part 1 is {sum(part1.values())} "
-        f"questions in {PAPER_SHAPE['part1_minutes']} minutes with NO sectional "
-        f"time limit.",
-        f"  QA&DI {part1['qa_di']}   VA&LR {part1['va_lr']}   "
-        f"DM {part1['dm']}",
-        f"  Part 2 GK {part2['gk']} in {part2['minutes']} minutes -- EXCLUDED from "
-        f"the percentile by XLRI, so it is out of scope here.",
-        # `:.2f` on both marking figures: Python prints -0.1 for -0.10, and the
-        # penaltys are quoted to two decimals everywhere else because "-0.1" and
-        # "-0.10" are different-looking numbers for the same value.
-        f"  {PAPER_SHAPE['options']} options, "
-        f"{PAPER_SHAPE['mark_correct']:+g} correct, "
-        f"{PAPER_SHAPE['mark_wrong']:.2f} wrong, and "
-        f"{PAPER_SHAPE['blank_penalty']:.2f} per blank after the first "
-        f"{PAPER_SHAPE['blank_penalty_after']}.",
+def paper_shape_lines(exam_id: str = "xat") -> list[str]:
+    """The exam's shape, read from `EXAMS`/`SECTIONS` rather than restated.
+
+    MEASURED 2026-10-02: this read `syllabus.PAPER_SHAPE`, a single dict describing
+    ONE paper. Deleting it in favour of `EXAMS`/`SECTIONS` broke this module's
+    import -- and `ruff` passed, because ruff cannot see a name deleted from
+    another module. Both agents reviewing the LLD found a broken package in a
+    working tree that linted clean.
+    """
+    exam = EXAMS[exam_id]
+    secs = [SECTIONS[f"{exam.exam_id}:{s}"] for s in exam.sections()]
+    counted = [x for x in secs if x.counts_for_percentile(exam)]
+    scored = sum(x.questions for x in counted)
+    lines = [
+        f"{exam.name} {exam.edition} -- {exam.total_questions} questions, of which "
+        f"{scored} carry a raw score in {exam.part_minutes()} minutes.",
     ]
+    # PARTS, not a flat section list. MEASURED 2026-10-02: the clock and the blank
+    # rule are Part-level facts, so a flat list implies each section is timed and
+    # penalised on its own -- the exact error corrected in docs/LLD.md §3.3.
+    for pid in exam.parts:
+        part = part_of_id(exam.exam_id, pid)
+        names = " ".join(SECTIONS[f"{exam.exam_id}:{s}"].name for s in part.sections)
+        clock = f"{part.minutes} min" if part.minutes else "no time limit"
+        rule = ""
+        if part.blank_penalty_after:
+            rule = (f", {part.blank_penalty:.2f} per blank after the first "
+                    f"{part.blank_penalty_after} ACROSS THE WHOLE PART")
+        counted_here = "" if part.in_percentile else ", excluded from the percentile"
+        lines.append(f"  {part.name}: {names} - {part.questions}q in {clock}{rule}"
+                     f"{counted_here}")
+    if exam.counted_questions != exam.total_questions:
+        lines.append(
+            f"  {exam.total_questions - exam.counted_questions} questions "
+            "carry NO raw score: GK is excluded from the percentile by XLRI, so it "
+            "is out of scope here."
+        )
+    # PER-ANSWER marking only. The blank rule is NOT here: it is on the part, and
+    # the per-part lines above already state it with its correct scope. Printing it
+    # again beside a single section is how the eight-free-blanks claim came to be
+    # read as eight PER SECTION in the first place.
+    marking = counted[0] if counted else secs[0]
+    lines.append(
+        f"  Per-answer marking: {marking.mark_correct:+g} correct, "
+        f"{marking.mark_wrong:.2f} wrong, {marking.options} options."
+    )
+    return lines
+
+
+def sections_of(exam_id: str = "xat") -> list[SectionSpec]:
+    """Every section of an exam, in paper order."""
+    exam = EXAMS[exam_id]
+    return [SECTIONS[f"{exam.exam_id}:{s}"] for s in exam.sections()]
+
+
+def exam_choices() -> list[ExamSpec]:
+    """Every exam, for a chooser.
+
+    MEASURED 2026-10-02: the owner ruled that with ONE exam the chooser is a click
+    that buys nothing -- `serve` prompting and `serve` defaulting were both
+    rejected. So the caller renders a chooser only when `len(this) > 1`, and the
+    decision is driven by the data rather than hardcoded either way.
+    """
+    return [EXAMS[k] for k in sorted(EXAMS)]
 
 
 def _len_subtopics() -> int:
@@ -173,78 +228,86 @@ code{background:#eef2f5;padding:1px 4px;border-radius:3px;font-size:13px}
 """
 
 
-def render_index_html() -> str:
-    """The page at `/`: choose a section, then a subtopic, then a level.
+def section_label(sec: SectionSpec, exam: ExamSpec) -> str:
+    """One line describing a section, from its own data."""
+    bits = [f"{sec.questions} questions"]
+    if sec.calculator:
+        bits.append("on-screen calculator")
+    if not sec.counts_for_percentile(exam):
+        bits.append("EXCLUDED from the percentile")
+    return " \u00b7 ".join(bits)
 
-    Navigation lives HERE, in the browser, not in a shell prompt.
 
-    MEASURED 2026-10-02: the first attempt put the choice in the terminal --
-    `serve` asked, and the learner typed a number. The owner's objection was
-    exact: "I don't wanna invest the time in running commands." A CLI menu is the
-    right shape for a CLI and the wrong shape for a learner who wants to think
-    about geometry, not about process. So `serve` starts immediately, prints one
-    URL, and every subsequent choice is a click.
+def render_index_html(exam_id: str = "xat") -> str:
+    """The page at `/`: the exam's sections, then its topics.
 
-    Served from `out/`, so each lesson is reachable at `/<lesson_id>/` and its own
-    `fetch('paper.json')` still resolves as a sibling -- one origin, no CORS, and
-    the learner can switch subtopic without restarting anything. That is also why
-    "one lesson per port" stopped being the right shape: switching in the UI
-    requires ONE origin.
+    Navigation lives HERE, in the browser, not in a shell prompt, and there is no
+    exam chooser while only one exam exists.
+
+    MEASURED 2026-10-02, this shape went wrong three times before it worked, and
+    each failure is a lesson the page must not repeat:
+
+    1. `serve` opened the FIRST registered lesson, so anyone who wanted Geometry got
+       Simple Interest with nothing saying a choice existed -- safe by being
+       invisible.
+    2. The fix was to ASK in the terminal. Rejected: "I don't wanna invest the time
+       in running commands."
+    3. Adding the exam layer introduced a fourth click for a single-exam product.
+       So the chooser is driven by `len(EXAMS) > 1`, not hardcoded either way: with
+       one exam the exam step is invisible, and with two it appears for free.
+
+    Everything here is DERIVED from `EXAMS`/`SECTIONS`/`TOPICS`. MEASURED: this
+    function once listed VA&LR and DM as a hardcoded pair, so a third section -- or
+    a second exam's sections -- would have been silently absent from the one page
+    whose whole job is to be honest about what is missing.
     """
     from html import escape
 
-    entries = written_entries()
+    exam = EXAMS[exam_id]
+    sections = sections_of(exam_id)
+    entries = [e for e in written_entries() if e.exam_id == exam_id]
     total = _len_subtopics()
-    out: list[str] = []
-    out.append("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">")
-    out.append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">")
-    out.append("<title>XAT Practice &middot; choose a topic</title>")
-    out.append(f"<style>{_NAV_CSS}</style></head><body><main>")
 
-    out.append("<h1>XAT Practice</h1>")
-    out.append("<p class=\"sub\">Choose a section, then a topic. "
-               "Inside a lesson the four levels are tabs &mdash; take them "
-               "in any order you like.</p>")
+    o: list[str] = []
+    o.append('<!doctype html><html lang="en"><head><meta charset="utf-8">')
+    o.append('<meta name="viewport" content="width=device-width,initial-scale=1">')
+    o.append(f"<title>{escape(exam.name)} Practice &middot; choose a section</title>")
+    o.append(f"<style>{_NAV_CSS}</style></head><body><main>")
 
-    # The paper, stated so the learner knows what they are aiming at.
-    out.append("<div class=\"box\"><h3>The paper</h3><ul>")
-    for line in paper_shape_lines():
-        out.append(f"<li>{escape(line)}</li>")
-    out.append("</ul></div>")
+    o.append(f"<h1>{escape(exam.name)} {escape(exam.edition)}</h1>")
+    o.append('<p class="sub">Choose a section, then a topic. Inside a lesson the '
+             "four levels are tabs &mdash; take them in any order you like.</p>")
 
-    # SECTION: QA&DI is the one this project trains. The other two are listed and
-    # marked, because hiding them would make the project look finished.
-    out.append("<h2>Section 1 &mdash; QA&amp;DI</h2>")
-    if not entries:
-        out.append('<div class="box off"><p>No lessons are written yet, so '
-                   "there is nothing to open. Run <code>uv run xat-practice "
-                   "build</code> after writing one.</p></div>")
-        out.append(f'<p class="sub" style="margin-top:24px">0 of {total} '
-                   "subtopics written.</p>")
-        out.append("</main></body></html>")
-        return "".join(out)
-    out.append("<p class=\"sub\">"
-               f"{len(entries)} lesson(s) written across "
-               f"{len({e.topic_id for e in entries})} topic(s), ordered by "
-               "measured questions-per-year.</p>")
-    for e in entries:
-        out.append(
-            f'<div class="lesson"><div><h3>{escape(e.label)}</h3>'
-            f'<p class="levels">{escape(e.subtopic_label)}</p></div>'
-            f'<a href="{escape(e.lesson_id)}/">Open &rarr;</a></div>')
+    # The exam, stated from data so the page cannot quote a spec we do not hold.
+    o.append('<div class="box"><h3>The paper</h3><ul>')
+    for line in paper_shape_lines(exam_id):
+        o.append(f"<li>{escape(line)}</li>")
+    o.append("</ul></div>")
 
-    out.append("<h2>Sections not built yet</h2>")
-    for name, key in (("VA&amp;LR", "va_lr"), ("DM", "dm")):
-        n = PAPER_SHAPE["part1"][key]
-        out.append(f'<div class="box off"><h3>{name}</h3>'
-                   f"<p>{n} questions in the real paper. Nothing written here "
-                   "yet &mdash; this project trains QA&amp;DI only.</p></div>")
-    out.append('<div class="box off"><h3>GK (Part 2)</h3>'
-               "<p>Excluded from the percentile by XLRI, so it is out of "
-               "scope.</p></div>")
+    for sec in sections:
+        mine = [e for e in entries if e.section_id == sec.section_id]
+        built = sec.built and bool(mine)
+        cls = "box" if built else "box off"
+        o.append(f'<h2>{escape(sec.name)}</h2>')
+        o.append(f'<div class="{cls}">')
+        o.append(f"<p>{escape(section_label(sec, exam))}</p>")
+        if built:
+            o.append(f"<p>{len(mine)} lesson(s) written, ordered by measured "
+                     "questions-per-year.</p>")
+            for e in mine:
+                o.append(
+                    f'<div class="lesson"><div><h3>{escape(e.label)}</h3>'
+                    f'<p class="levels">{escape(e.subtopic_label)}</p></div>'
+                    f'<a href="{escape(e.href)}">Open &rarr;</a></div>')
+        elif not sec.counts_for_percentile(exam):
+            o.append("<p>Out of scope: it does not move the percentile.</p>")
+        else:
+            o.append("<p>Nothing written here yet. This project trains "
+                     "QA&amp;DI only.</p>")
+        o.append("</div>")
 
-    out.append(f'<p class="sub" style="margin-top:24px">{len(entries)} of '
-               f"{total} subtopics written. "
-               "<code>uv run xat-practice coverage</code> for the full ledger.</p>")
-    out.append("</main></body></html>")
-    return "".join(out)
+    o.append(f'<p class="sub" style="margin-top:24px">{len(entries)} of {total} '
+             "subtopics written. "
+             "<code>uv run xat-practice coverage</code> for the full ledger.</p>")
+    o.append("</main></body></html>")
+    return "".join(o)

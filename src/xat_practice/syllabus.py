@@ -34,7 +34,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import TypedDict
 
 PAPERS = (2020, 2021, 2022, 2023, 2024, 2025, 2026)
 QUESTIONS_PER_PAPER = 28
@@ -77,7 +76,21 @@ class Stratum(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class Topic:
+    """One syllabus topic, with the exam and section it belongs to.
+
+    `exam_id` and `section_id` are REQUIRED, with no default, on purpose. A
+    defaulted parent is a silent parent: the next topic added would inherit
+    `"xat"/"qa_di"` and appear in the ledger, the navigator and the coverage
+    numbers without anyone deciding it belongs there. A missing argument is a
+    TypeError at import, which is a gate; an inherited default is not.
+
+    This is the layer above section (D27). Today every topic is `xat`/`qa_di`
+    because D7 trains QA&DI only -- and that is stated 17 times rather than
+    assumed once.
+    """
     id: str
+    exam_id: str
+    section_id: str
     name: str
     per_year: tuple[int, ...]  # 2020..2026, None-coded as 0
     owner_listed: bool
@@ -130,37 +143,39 @@ class Subtopic:
 # --------------------------------------------------------------------------
 
 TOPICS: tuple[Topic, ...] = (
-    Topic("di", "Data Interpretation (tables, pie, bar, graphs, caselets)",
+    Topic("di", "xat", "qa_di", "Data Interpretation (tables, pie, bar, graphs, caselets)",
           (6, 9, 2, 6, 9, 9, 6), False,
           "Largest single block. Highest frequency AND lowest difficulty-per-mark. "
           "Not in the owner's list -- added, D4."),
-    Topic("geo_mens", "Geometry & Mensuration", (6, 6, 2, 5, 2, 5, 6), True,
+    Topic("geo_mens", "xat", "qa_di", "Geometry & Mensuration", (6, 6, 2, 5, 2, 5, 6), True,
           "Most consistent P1 in the whole paper. 2 questions every single year."),
-    Topic("num_sys", "Number System (factors, HCF/LCM, remainder, base)",
+    Topic("num_sys", "xat", "qa_di", "Number System (factors, HCF/LCM, remainder, base)",
           (2, 2, 2, 5, 4, 2, 3), False, "Added, D4. Speed marks, near-zero learning cost."),
-    Topic("avg_ratio", "Averages, Ratio & Proportion", (1, 3, 7, 2, 0, 2, 3), True, ""),
-    Topic("lin_quad", "Linear & Quadratic Equations", (1, 1, 5, 2, 2, 2, 1), True,
+    Topic("avg_ratio", "xat", "qa_di", "Averages, Ratio & Proportion",
+          (1, 3, 7, 2, 0, 2, 3), True, ""),
+    Topic("lin_quad", "xat", "qa_di", "Linear & Quadratic Equations", (1, 1, 5, 2, 2, 2, 1), True,
           "The 2024 spike to 5 is instructive: a hard year leans on equations."),
-    Topic("pct", "Percentage, % change, growth, CAGR", (0, 0, 0, 0, 0, 0, 0), False,
+    Topic("pct", "xat", "qa_di", "Percentage, % change, growth, CAGR", (0, 0, 0, 0, 0, 0, 0), False,
           "NOT SEPARATELY MEASURED. Inside `avg_ratio` and inside the "
           "CollegeDekho 'Arithmetic' row (8,8,4-5,4,5,5 ~= 5.8/yr). Recorded at "
           "0 to mean UNMEASURED, not absent -- see D5. Do not read weight 0 as "
           "'never asked'."),
-    Topic("pl_int", "Profit, Loss & Interest", (1, 1, 5, 3, 1, 1, 1), True, ""),
-    Topic("tsd", "Time, Speed & Distance", (2, 0, 1, 0, 1, 4, 2), True, ""),
-    Topic("puzzle", "Puzzle & Charts", (3, 3, 0, 0, 3, 0, 0), False, ""),
-    Topic("prob_comb", "Probability & Combinatorics", (2, 1, 0, 1, 1, 1, 1), False,
+    Topic("pl_int", "xat", "qa_di", "Profit, Loss & Interest", (1, 1, 5, 3, 1, 1, 1), True, ""),
+    Topic("tsd", "xat", "qa_di", "Time, Speed & Distance", (2, 0, 1, 0, 1, 4, 2), True, ""),
+    Topic("puzzle", "xat", "qa_di", "Puzzle & Charts", (3, 3, 0, 0, 3, 0, 0), False, ""),
+    Topic("prob_comb", "xat", "qa_di", "Probability & Combinatorics", (2, 1, 0, 1, 1, 1, 1), False,
           "Minimal slice only, D6. 1-2/yr, high variance, spikes derail 95th."),
-    Topic("prog", "Progressions & Series", (0, 0, 1, 1, 3, 0, 1), True, ""),
-    Topic("ds", "Data Sufficiency", (0, 0, 1, 2, 1, 0, 0), False,
+    Topic("prog", "xat", "qa_di", "Progressions & Series", (0, 0, 1, 1, 3, 0, 1), True, ""),
+    Topic("ds", "xat", "qa_di", "Data Sufficiency", (0, 0, 1, 2, 1, 0, 0), False,
           "Added, D4. A question TYPE, not a topic -- it needs its own gate "
           "(G14). Not in the owner's list."),
-    Topic("ineq", "Inequalities", (0, 0, 0, 1, 1, 1, 1), False, "Added, D4."),
-    Topic("venn", "Venn & Sets", (1, 0, 1, 0, 0, 0, 2), False, "Added, D4. Cheap marks."),
-    Topic("log", "Logarithms, Surds & Indices", (0, 1, 1, 0, 0, 1, 0), True, ""),
-    Topic("func", "Graphs & Functions", (3, 0, 0, 0, 0, 0, 0), False,
+    Topic("ineq", "xat", "qa_di", "Inequalities", (0, 0, 0, 1, 1, 1, 1), False, "Added, D4."),
+    Topic("venn", "xat", "qa_di", "Venn & Sets", (1, 0, 1, 0, 0, 0, 2), False,
+          "Added, D4. Cheap marks."),
+    Topic("log", "xat", "qa_di", "Logarithms, Surds & Indices", (0, 1, 1, 0, 0, 1, 0), True, ""),
+    Topic("func", "xat", "qa_di", "Graphs & Functions", (3, 0, 0, 0, 0, 0, 0), False,
           "Added, D4. Brand new category in 2026 with 3 questions."),
-    Topic("time_work", "Time & Work", (0, 1, 0, 0, 0, 0, 1), True,
+    Topic("time_work", "xat", "qa_di", "Time & Work", (0, 1, 0, 0, 0, 0, 1), True,
           "Real weight is higher than the row shows: it is folded into "
           "`avg_ratio` and into DI caselets in several years."),
 )
@@ -186,11 +201,19 @@ EXCLUDED: dict[str, str] = {
 
 
 def self_check() -> None:
-    """Assert every year's rows close to 28.
+    """Assert the paper closes, and that the exam/section layer closes too.
 
     A weight table that does not sum to the paper length is a table of
     opinions wearing the costume of data. This is the check that makes the rest
     quotable, so it runs in the test suite on every paper.
+
+    The exam/section checks live HERE, not in `registry.assert_registry_is_honest`,
+    because they are TABLE invariants and this function already guards the table's
+    other closure. `registry` owns lessons; `self_check` owns what a topic may point
+    at. MEASURED 2026-10-02: both dicts closed by luck -- `total_questions` matched
+    the section sum and `counted_questions` matched the counted sum, with nothing
+    asserting either, because `ExamSpec.sections` held bare ids while `SECTIONS` was
+    keyed `"<exam>:<section>"` and the join was a convention.
     """
     for i, year in enumerate(PAPERS):
         total = sum(t.per_year[i] for t in TOPICS)
@@ -201,6 +224,64 @@ def self_check() -> None:
             )
     if len(TOPICS) != len({t.id for t in TOPICS}):
         raise ValueError("duplicate topic id")
+
+    _check_exam_layer()
+
+
+def _check_exam_layer() -> None:
+    """Every link in EXAMS <-> SECTIONS <-> TOPICS must resolve, and both question
+    counts must close. Raises with the specific broken link."""
+    # 1. SECTIONS is keyed "<exam>:<section>" and its value must agree with its key.
+    for key, spec in SECTIONS.items():
+        if key != f"{spec.exam_id}:{spec.section_id}":
+            raise ValueError(
+                f"SECTIONS[{key!r}] holds exam_id={spec.exam_id!r} "
+                f"section_id={spec.section_id!r}; the key and the value disagree"
+            )
+        if spec.exam_id not in EXAMS:
+            raise ValueError(
+                f"SECTIONS[{key!r}] names exam {spec.exam_id!r}, which is not in "
+                f"EXAMS. Known: {sorted(EXAMS)}"
+            )
+
+    # 2. Every section an exam claims must exist, and the sums must close.
+    for exam in EXAMS.values():
+        for sid in exam.sections():
+            if f"{exam.exam_id}:{sid}" not in SECTIONS:
+                raise ValueError(
+                    f"EXAMS[{exam.exam_id!r}] lists section {sid!r}, which is not in "
+                    "SECTIONS"
+                )
+        all_sum = sum(SECTIONS[f"{exam.exam_id}:{s}"].questions
+                      for s in exam.sections())
+        if all_sum != exam.total_questions:
+            raise ValueError(
+                f"{exam.name} {exam.edition}: sections sum to {all_sum}, "
+                f"total_questions says {exam.total_questions}"
+            )
+        counted_sum = sum(SECTIONS[f"{exam.exam_id}:{s}"].questions
+                          for s in exam.counted())
+        if counted_sum != exam.counted_questions:
+            raise ValueError(
+                f"{exam.name} {exam.edition}: COUNTED sections sum to "
+                f"{counted_sum}, counted_questions says {exam.counted_questions}"
+            )
+
+    # 3. Every topic must resolve to a section of ITS OWN exam.
+    for topic in TOPICS:
+        section_of(topic)
+        subtopics_of = [s for s in SUBTOPICS if s.id.startswith(f"{topic.id}:")]
+        if not subtopics_of:
+            raise ValueError(f"topic {topic.id!r} has no subtopics")
+
+    # 4. No orphan section: every declared section belongs to a claimed exam.
+    claimed = {f"{e.exam_id}:{s}" for e in EXAMS.values() for s in e.sections()}
+    for key in SECTIONS:
+        if key not in claimed:
+            raise ValueError(
+                f"SECTIONS has {key!r}, which no exam claims. A section that "
+                "nothing points at will never be rendered and never be built."
+            )
 
 
 def measured_topics() -> tuple[Topic, ...]:
@@ -402,41 +483,295 @@ def stratum_counts() -> dict[Stratum, int]:
     return out
 
 
-class PaperShapeSpec(TypedDict):
-    """The XAT 2026 paper, as measured from XLRI's own notification.
+@dataclass(frozen=True, slots=True)
+class PartSpec:
+    """One PART of an exam, with the rules that are shared ACROSS its sections.
 
-    Typed, not a bare dict. MEASURED 2026-10-02: an untyped dict cost seven mypy
-    errors in `coverage.py` -- every access came back as `object` and had to be
-    silenced. The spec is the single most quoted set of numbers in the project, so
-    a typo in a key should be a type error rather than a string comparison that
-    quietly fails.
+    This type exists because of a measured modelling error, caught independently by
+    two reviewers reading `docs/LLD.md` on 2026-10-02.
+
+    `blank_penalty` and `blank_penalty_after` were on `SectionSpec`, so the product
+    implied **eight free blanks per section**. XAT's rule is "minus 0.10 for every
+    unattempted question after the first eight", and Part 1 is ONE pool of 75
+    questions across QA&DI, VA&LR and DM in a shared 170 minutes. So the truth is
+    **eight free blanks in total**, and a learner told otherwise would skip 24 and
+    lose about 1.6 marks. `minutes=170` was wrong for the same reason: it is Part 1's
+    clock, not any section's, and XAT 2026 has **no sectional time limit**.
+
+    A per-section penalty is not merely a different default. It is a false attempt
+    strategy, and strategy is the thing this product teaches.
     """
+    part_id: str
+    exam_id: str
+    name: str
+    sections: tuple[str, ...]
+    questions: int
+    minutes: int
+    in_percentile: bool
+    blank_penalty: float = 0.0
+    blank_penalty_after: int = 0
 
+    def cost_of_blanks(self, blanks: int) -> float:
+        """Marks lost to `blanks` unattempted questions IN THIS PART.
+
+        `blanks` is a count of the WHOLE part, not of one section. That is the whole
+        point of this type, and the argument is falsified in
+        `test_the_blank_penalty_counts_across_the_part_not_within_a_section`.
+        """
+        over = max(0, blanks - self.blank_penalty_after)
+        return over * self.blank_penalty
+
+
+@dataclass(frozen=True, slots=True)
+class SectionSpec:
+    """One SECTION of one exam: its questions, options and per-answer marking.
+
+    MEASURED 2026-10-02, and the reason this is separate from `PartSpec`: XAT 2026
+    is -0.25 throughout Part 1 with GK excluded, while CAT is reported to differ
+    *per section*. So per-ANSWER marking belongs here and the cross-section blank
+    rule does not.
+
+    It carries NO `stratum`. A single value was a lie: QA&DI holds **37 QUANT and 3
+    LOGIC** subtopics (`ds:sufficiency-statements`, `venn:venn-counting`,
+    `puzzle:routing-and-network-puzzles`), so a section is a MIX. `strata()` derives
+    the distribution instead, and nothing has to be relabelled when one is added.
+    """
+    section_id: str
+    exam_id: str
+    part_id: str
+    name: str
+    questions: int
+    options: int = 5
+    mark_correct: float = 1.0
+    mark_wrong: float = -0.25
+    calculator: bool = False
+    built: bool = False         # is a LESSON written for this section yet?
+
+    def strata(self) -> dict[Stratum, int]:
+        """How many subtopics of each stratum this section holds.
+
+        DERIVED, never stored. MEASURED 2026-10-02: `SectionSpec.stratum` was a
+        single `Stratum`, which is wrong for any section holding more than one --
+        QA&DI holds 3 LOGIC subtopics out of 40.
+        """
+        out: dict[Stratum, int] = {}
+        for sub in SUBTOPICS:
+            topic_id = sub.id.split(":", 1)[0]
+            for topic in TOPICS:
+                if (topic.id == topic_id
+                        and topic.exam_id == self.exam_id
+                        and topic.section_id == self.section_id):
+                    out[sub.stratum] = out.get(sub.stratum, 0) + 1
+        return out
+
+    def counts_for_percentile(self, exam: ExamSpec) -> bool:
+        """Does this section decide the percentile in `exam`?
+
+        A METHOD, not a stored `in_percentile` flag. MEASURED 2026-10-02: the flag
+        was removed because it duplicated the part's `in_percentile` with nothing to
+        keep them in step -- GK could be "in" the percentile on one line and out on
+        another. One home: the PART decides; the section asks on its exam's behalf.
+
+        `exam` is not optional decoration. Asking an XAT section whether it counts
+        inside a DIFFERENT exam is a bug that should be loud, not a question that
+        quietly returns the XAT answer.
+        """
+        if exam.exam_id != self.exam_id:
+            raise ValueError(
+                f"{self.exam_id}:{self.section_id} was asked whether it counts for "
+                f"{exam.exam_id!r}. Refusing rather than answering about the wrong "
+                "exam."
+            )
+        return part_of(self).in_percentile
+
+    def guess_ev(self) -> float:
+        """EV of guessing at random, from THIS section's per-answer marking.
+
+        DELEGATED to `items.expected_ev`, which already existed. MEASURED
+        2026-10-02: the first version of this computed
+        `1/options + (options-1)/options * mark_wrong` -- it hardcoded `1.0` for a
+        correct answer and so DROPPED `mark_correct` entirely. For the one case it
+        was written to illustrate (CAT's reported +3/-1) it returned **-0.6000** when
+        the truth is 3/5 + 4/5 x -1 = **-0.2000**. The XAT case was right only
+        because XAT's `mark_correct` happens to be 1.0.
+
+        Both agents reviewing the LLD caught it independently. A second
+        implementation of a function that already exists is not a convenience, it is
+        a second thing to be wrong.
+        """
+        from .items import expected_ev
+
+        return expected_ev(options=self.options, mark_correct=self.mark_correct,
+                           mark_wrong=self.mark_wrong)
+
+
+@dataclass(frozen=True, slots=True)
+class ExamSpec:
+    """One exam, as measured from its own official notification.
+
+    `counted_questions` is the DENOMINATOR for every raw-score claim, and it is
+    separate from `total_questions` on purpose: XAT is 95 questions but only 75 of
+    them are scored, because GK is excluded by XLRI (D7).
+    """
+    exam_id: str
+    name: str
+    edition: str
     total_questions: int
-    part1_minutes: int
-    part1: dict[str, int]
-    part2: dict[str, int]
-    options: int
-    mark_correct: float
-    mark_wrong: float
-    blank_penalty_after: int
-    blank_penalty: float
-    gk_in_percentile: bool
-    sectional_time_limit: bool
-    calculator: str
+    counted_questions: int
+    parts: tuple[str, ...]
+    #: The edition this shape was VERIFIED against, and how. MEASURED 2026-10-02:
+    #: it is October 2026, so the paper a learner actually sits is most likely
+    #: XAT 2027. Hardcoding `edition="2026"` silently asserts that next year's paper
+    #: has the same counts, marking and calculator policy. It must be re-verified
+    #: against that year's brochure, and this says so in data rather than in prose.
+    verified_against: str = ""
+    #: What `verified_against` is: OFFICIAL / MEASURED / SECONDARY / ASSUMPTION.
+    evidence: str = "OFFICIAL"
+
+    def sections(self) -> tuple[str, ...]:
+        """Every section, in paper order."""
+        out: list[str] = []
+        for pid in self.parts:
+            out.extend(part_of_id(self.exam_id, pid).sections)
+        return tuple(out)
+
+    def counted(self) -> tuple[str, ...]:
+        """The sections that carry a raw score, in paper order.
+
+        Derived from the PART, never stored. XAT's counted sections are QA&DI +
+        VA&LR + DM = 75; GK is 20 and excluded by XLRI. MEASURED 2026-10-02:
+        keeping this as a stored flag let GK be "in" the percentile on one line and
+        out on another, with nothing to notice.
+        """
+        out: list[str] = []
+        for pid in self.parts:
+            part = part_of_id(self.exam_id, pid)
+            if part.in_percentile:
+                out.extend(part.sections)
+        return tuple(out)
+
+    def part_minutes(self) -> int:
+        """Minutes shared by the COUNTED sections. XAT 2026: 170 for all of Part 1.
+
+        A METHOD, not a field: with more parts the number belongs to whichever part
+        is scored, and a stored total would have to be updated by hand when a second
+        part appears.
+        """
+        return sum(part_of_id(self.exam_id, pid).minutes
+                   for pid in self.parts
+                   if part_of_id(self.exam_id, pid).in_percentile)
 
 
-PAPER_SHAPE: PaperShapeSpec = {
-    "total_questions": 95,
-    "part1_minutes": 170,
-    "part1": {"qa_di": 28, "va_lr": 26, "dm": 21},
-    "part2": {"gk": 20, "minutes": 10},
-    "options": 5,
-    "mark_correct": 1,
-    "mark_wrong": -0.25,
-    "blank_penalty_after": 8,
-    "blank_penalty": -0.10,
-    "gk_in_percentile": False,
-    "sectional_time_limit": False,
-    "calculator": "qa_di",
+#: Every exam this project knows the SHAPE of. ONE entry today, on purpose: the
+#: owner ruled (2026-10-02) that XAT is completed before any other exam is added, so
+#: the layers above are modelled and proven with a single key rather than populated
+#: with content nobody has verified.
+#:
+#: MEASURED from XLRI's own 2026 notification, not from a coaching site.
+#: `verified_against` / `evidence` record that. See `ExamSpec.evidence`.
+EXAMS: dict[str, ExamSpec] = {
+    "xat": ExamSpec(
+        exam_id="xat",
+        name="XAT",
+        edition="2026",
+        total_questions=95,
+        counted_questions=75,
+        parts=("part_1", "part_2"),
+        verified_against="XLRI Important Instructions, XAT 2026",
+        evidence="OFFICIAL",
+    ),
 }
+
+#: Every PART, keyed `"<exam>:<part>"`.
+#:
+#: Part 1 is ONE pool of 75 questions in 170 minutes with NO sectional limit, and
+#: the eight free blanks are counted across all of it -- that is why this type
+#: exists. Part 2 is GK: 20 questions, 10 minutes, no negative marking, and EXCLUDED
+#: from the percentile.
+PARTS: dict[str, PartSpec] = {
+    "xat:part_1": PartSpec(
+        part_id="part_1", exam_id="xat", name="Part 1",
+        sections=("qa_di", "va_lr", "dm"),
+        questions=75, minutes=170, in_percentile=True,
+        blank_penalty=-0.10, blank_penalty_after=8,
+    ),
+    "xat:part_2": PartSpec(
+        part_id="part_2", exam_id="xat", name="Part 2: General Knowledge",
+        sections=("gk",), questions=20, minutes=10, in_percentile=False,
+    ),
+}
+
+#: Every section, by `"<exam>:<section>"`. Keyed that way so a section id is never
+#: ambiguous across exams -- CAT has its own `di`, and `"di"` alone would collide.
+#:
+#: No `minutes` and no blank penalty here: both belong to the PART. See `PartSpec`.
+SECTIONS: dict[str, SectionSpec] = {
+    "xat:qa_di": SectionSpec(
+        section_id="qa_di", exam_id="xat", part_id="part_1", name="QA&DI",
+        questions=28, calculator=True, built=True,
+    ),
+    "xat:va_lr": SectionSpec(
+        section_id="va_lr", exam_id="xat", part_id="part_1", name="VA&LR",
+        questions=26,
+    ),
+    "xat:dm": SectionSpec(
+        section_id="dm", exam_id="xat", part_id="part_1", name="DM", questions=21,
+    ),
+    "xat:gk": SectionSpec(
+        section_id="gk", exam_id="xat", part_id="part_2", name="GK", questions=20,
+    ),
+}
+
+
+def part_of_id(exam_id: str, part_id: str) -> PartSpec:
+    try:
+        return PARTS[f"{exam_id}:{part_id}"]
+    except KeyError:
+        raise KeyError(f"no part {exam_id}:{part_id}; have {sorted(PARTS)}") from None
+
+
+def part_of(section: SectionSpec) -> PartSpec:
+    """The `PartSpec` a section belongs to. Checks BOTH directions.
+
+    MEASURED 2026-10-02: with `SECTIONS["xat:qa_di"]` rewritten to carry
+    `exam_id="cat"`, the join returned the CAT spec for an XAT section with no
+    error -- the key said one exam, the value another, and only one was read. A join
+    that is a convention is a join that drifts.
+    """
+    spec = part_of_id(section.exam_id, section.part_id)
+    if spec.exam_id != section.exam_id:
+        raise KeyError(
+            f"SECTIONS[{section.exam_id}:{section.section_id}] claims part "
+            f"{section.part_id!r}, whose PARTS entry belongs to "
+            f"{spec.exam_id!r}. Refusing rather than borrowing another exam's rules."
+        )
+    return spec
+
+
+def section_of(topic: Topic) -> SectionSpec:
+    """The `SectionSpec` a topic belongs to. Raises if it names one that is absent.
+
+    Keyed by `exam_id` and `section_id` together rather than trusting the id alone,
+    so `topic.section_id` naming another exam's section is a `KeyError` rather than
+    a silently borrowed marking scheme.
+    """
+    key = f"{topic.exam_id}:{topic.section_id}"
+    try:
+        spec = SECTIONS[key]
+    except KeyError:
+        raise KeyError(
+            f"topic {topic.id!r} declares section {key}, which is not in "
+            f"SECTIONS. Known: {sorted(SECTIONS)}"
+        ) from None
+    # BOTH directions. MEASURED 2026-10-02: with SECTIONS["xat:qa_di"] rewritten to
+    # carry exam_id="cat", `section_of(geo_mens)` returned the CAT spec with no
+    # error -- the key said xat, the value said cat, and only one of them was read.
+    # The join was a convention rather than a check, which is the thing that drifts.
+    if spec.exam_id != topic.exam_id:
+        raise KeyError(
+            f"SECTIONS[{key!r}] claims exam {spec.exam_id!r}, so its key and its "
+            f"value disagree. Refusing rather than borrowing another exam's "
+            "marking."
+        )
+    part_of(spec)  # the section must also name a part that agrees with its exam
+    return spec

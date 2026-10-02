@@ -78,8 +78,14 @@ def test_the_page_links_every_written_lesson_and_only_those():
     # And the links point at each lesson DIRECTORY, because the whole layout depends
     # on one origin: `serve` roots at `out/`, so `/<lesson_id>/` is what makes the
     # sibling `fetch('paper.json')` resolve.
+    # The href now carries the exam AND the section. MEASURED 2026-10-02: it was a
+    # bare `<lesson_id>/`, which two exams could collide on -- and the URL shape
+    # `/<exam>/<section>/<lesson>/` is the forward-compatibility contract in the
+    # LLD, so it is pinned here rather than left to the renderer.
     links = re.findall(r'href="([^"]+)"', text)
-    assert links == [f"{e.lesson_id}/" for e in entries], links
+    assert links == [e.href for e in entries], links
+    for link in links:
+        assert link.startswith("xat/qa_di/"), link
 
 
 def test_the_page_states_the_unwritten_count_and_it_is_true():
@@ -107,24 +113,43 @@ def test_the_page_quotes_the_paper_shape_from_the_data_not_from_prose():
     Every figure here comes from `syllabus.PAPER_SHAPE`, so the menu cannot state
     a spec the code does not hold.
     """
-    from xat_practice.syllabus import PAPER_SHAPE
+    from xat_practice.syllabus import EXAMS, SECTIONS
 
+    xat = EXAMS["xat"]
     text = unescape(M.render_index_html())
-    assert f"{PAPER_SHAPE['total_questions']} questions" in text
-    assert f"QA&DI {PAPER_SHAPE['part1']['qa_di']}" in text
-    assert f"VA&LR {PAPER_SHAPE['part1']['va_lr']}" in text
-    assert f"DM {PAPER_SHAPE['part1']['dm']}" in text
+    assert f"{xat.total_questions} questions" in text
+    assert f"{xat.counted_questions}" in text, "the COUNTED total must be stated"
+    for sid in xat.sections():
+        assert SECTIONS[f"xat:{sid}"].name in text
     assert "EXCLUDED" in text, "GK's exclusion from the percentile must be stated"
     assert "-0.10" in text, "the blank penalty must print to two decimals"
     assert "-0.1 " not in text, "-0.1 is the wrong precision for a penalty"
     assert "-0.25" in text
+    # The exam name, and the fact that there is only one.
+    assert xat.name in text
 
 
 def test_the_page_does_not_claim_the_unbuilt_sections_exist():
-    assert "not built" in unescape(M.render_index_html()), (
-        "VA&LR and DM are in the paper and NOT in this project. The menu must say "
-        "so rather than listing them as if they were available."
-    )
+    """VA&LR and DM are in the paper and NOT in this project, and GK is out of scope
+    for a different reason. The page must distinguish those two.
+
+    MEASURED 2026-10-02: this asserted the literal "not built", which was fine when
+    the two missing sections were a hardcoded pair. They are now DERIVED from
+    `SECTIONS`, so the assertion follows the data instead of a string that a
+    refactor can silently drop.
+    """
+    from xat_practice.syllabus import EXAMS, SECTIONS
+
+    plain = unescape(M.render_index_html())
+    xat = EXAMS["xat"]
+    missing = [SECTIONS[f"xat:{sid}"] for sid in xat.sections()
+               if not SECTIONS[f"xat:{sid}"].built]
+    assert missing, "the premise: some sections are unbuilt"
+    for sec in missing:
+        assert sec.name in plain, f"{sec.name} is missing from the page entirely"
+    # Counted-but-unbuilt must say "nothing written"; GK must say it is excluded.
+    assert "Nothing written here yet" in plain
+    assert "does not move the percentile" in plain or "EXCLUDED" in plain
 
 
 def test_the_page_is_ordered_by_measured_topic_weight():

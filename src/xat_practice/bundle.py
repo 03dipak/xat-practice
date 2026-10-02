@@ -41,12 +41,27 @@ OUT_ROOT = Path(__file__).resolve().parent.parent.parent / "out"
 
 
 def out_dir(lesson_id: str) -> Path:
-    """Where a lesson's bundle goes.
+    """Where a lesson's bundle goes: `out/<exam>/<section>/<lesson>/`.
 
-    MEASURED 2026-10-02: this was a single hardcoded `out/lesson-01`, so a second
-    lesson had nowhere to live. Now the directory is DERIVED from the lesson id,
-    which means a lesson cannot be built into the wrong place by accident."""
-    return OUT_ROOT / lesson_id
+    MEASURED 2026-10-02, twice, and the second time is the one worth keeping:
+    this was a single hardcoded `out/lesson-01`, so a second lesson had nowhere to
+    live, and it was fixed to `out/<lesson_id>/`. That was enough for one exam.
+
+    Then the exam layer landed and the navigator began emitting
+    `/xat/qa_di/<lesson>/` -- while the bundles were still written to
+    `out/<lesson_id>/`. **Every link on the page was dead**, and NEITHER reviewing
+    agent caught it: neither drove a browser. `find out -name index.html` next to
+    `grep href out/index.html` is the check that saw it in one line.
+
+    So the path now carries the exam and the section, which is also the
+    forward-compatibility contract in `docs/LLD.md`: two exams cannot collide on a
+    `lesson_id`, and the URL shape does not change when a second exam is added.
+    """
+    for lesson in LESSONS:
+        if lesson.lesson_id == lesson_id:
+            return OUT_ROOT / lesson.exam_id / lesson.section_id / lesson_id
+    raise KeyError(f"no lesson {lesson_id!r}; have "
+                   f"{[x.lesson_id for x in LESSONS]}")
 
 
 #: Retained for the tests and for `--lesson`'s default, which is the FIRST lesson.

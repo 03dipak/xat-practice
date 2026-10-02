@@ -8,12 +8,14 @@ number the pedagogy in docs/ rests on.
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import pytest
 
 from xat_practice import syllabus as S
 from xat_practice.items import LEVEL_RECIPES, Level, derive_level
+from xat_practice.items import expected_ev as _ev
 from xat_practice.registry import LESSONS
 from xat_practice.solver import SOLVER, Failure, Verdict
 
@@ -24,7 +26,7 @@ from xat_practice.solver import SOLVER, Failure, Verdict
 def test_self_check_rejects_a_table_that_does_not_close(monkeypatch):
     """THE test for `self_check`. Without it, `self_check` is a function that
     has only ever seen a true statement."""
-    bad = S.Topic("fake", "Fake", (1,) * 7, True)
+    bad = S.Topic("fake", "xat", "qa_di", "Fake", (1,) * 7, True)
     monkeypatch.setattr(S, "TOPICS", (*S.TOPICS, bad))
     with pytest.raises(ValueError, match="The table is wrong, not the exam"):
         S.self_check()
@@ -34,7 +36,8 @@ def test_self_check_rejects_duplicate_ids(monkeypatch):
     """The dup check runs AFTER the sum check, so the table must still close to
     28 -- otherwise the sum check fires first and this proves nothing about the
     dup check."""
-    renamed = S.Topic(S.TOPICS[0].id, "Clone", S.TOPICS[1].per_year, True)
+    renamed = S.Topic(S.TOPICS[0].id, "xat", "qa_di", "Clone",
+                     S.TOPICS[1].per_year, True)
     monkeypatch.setattr(S, "TOPICS", (S.TOPICS[0], renamed, *S.TOPICS[2:]))
     with pytest.raises(ValueError, match="duplicate topic id"):
         S.self_check()
@@ -89,18 +92,95 @@ def test_every_subtopic_trap_is_a_full_sentence_with_a_concrete_wrong_move():
             assert len(t.split()) >= 5, f"{s.id}: trap too vague -> {t!r}"
 
 
-def test_paper_shape_constants_match_the_verified_xat():
-    ps = S.PAPER_SHAPE
-    assert ps["total_questions"] == 95
-    assert ps["part1"] == {"qa_di": 28, "va_lr": 26, "dm": 21}
-    assert sum(ps["part1"].values()) == 75
-    assert ps["options"] == 5
-    assert ps["mark_wrong"] == -0.25
-    assert ps["blank_penalty_after"] == 8
-    assert ps["blank_penalty"] == -0.10
-    assert ps["gk_in_percentile"] is False
-    assert ps["sectional_time_limit"] is False
-    assert ps["calculator"] == "qa_di"
+def test_the_exam_and_section_shapes_match_the_verified_xat():
+    """MEASURED from XLRI's own 2026 notification, not from a coaching site.
+
+    This replaced a test that read `syllabus.PAPER_SHAPE`, a single dict describing
+    one paper. The exam is now `EXAMS` and the marking is per SECTION, which is the
+    level at which the first two exams actually differ.
+    """
+    xat = S.EXAMS["xat"]
+    assert xat.total_questions == 95
+    assert xat.counted_questions == 75
+    assert xat.part_minutes() == 170
+    assert xat.parts == ("part_1", "part_2")
+    assert xat.sections() == ("qa_di", "va_lr", "dm", "gk")
+    assert xat.counted() == ("qa_di", "va_lr", "dm")
+
+    qa = S.SECTIONS["xat:qa_di"]
+    assert qa.questions == 28
+    assert qa.options == 5
+    assert qa.mark_wrong == -0.25
+    assert qa.calculator is True
+    # The blank rule is NOT here. See
+    # `test_the_blank_penalty_counts_across_the_part_not_within_a_section`.
+    assert not hasattr(qa, "blank_penalty")
+    # MEASURED 2026-10-02: `minutes=170` was first set on the qa_di section alone,
+    # which made Part 1's shared clock look like QA&DI's own allowance. No COUNTED
+    # section may claim a clock now; the exam holds it. GK is exempt and legitimately
+    # has its own 10 -- Part 2 is timed separately -- so it is excluded here rather
+    # than by loosening the claim to "nearly all".
+    # No section may carry a clock: XAT 2026 has NO sectional time limit.
+    assert not any(hasattr(S.SECTIONS[f"xat:{sid}"], "minutes")
+                   for sid in xat.sections())
+
+    # GK: 20 questions, 10 minutes, and OUT of the raw score.
+    #
+    # MEASURED 2026-10-02: `ExamSpec.excluded_from_percentile` is GONE. GK's
+    # exclusion now lives in ONE place -- `PartSpec.in_percentile` -- because the
+    # old flag and the old field could disagree with nothing to notice. The
+    # assertion below therefore asks the part.
+    gk = S.SECTIONS["xat:gk"]
+    assert gk.questions == 20
+    assert S.PARTS["xat:part_2"].minutes == 10
+    assert S.PARTS["xat:part_2"].in_percentile is False
+    assert gk.counts_for_percentile(xat) is False
+    assert "excluded_from_percentile" not in set(S.ExamSpec.__dataclass_fields__), (
+        "the second home for GK's exclusion is back"
+    )
+
+
+def test_the_guess_ev_is_computed_not_hardcoded():
+    """MEASURED 2026-10-02: a first version of this computed
+    `1/options + (options-1)/options * mark_wrong`, which hardcoded +1 and dropped
+    `mark_correct`. It returned -0.6000 for CAT's reported +3/-1 when the truth is
+    3/5 + 4/5 x -1 = **-0.2000**. It was right for XAT only because XAT's
+    `mark_correct` happens to be 1. Both reviewing agents caught it; this pins it."""
+    qa = S.SECTIONS["xat:qa_di"]
+    assert qa.guess_ev() == pytest.approx(0.0, abs=1e-9), (
+        "XAT's +1/-0.25 at 5 options is exactly zero -- that is the whole lesson"
+    )
+    assert _ev(options=5, mark_correct=3, mark_wrong=-1) == pytest.approx(
+        -0.2, abs=1e-9)
+    # And a 3-mark paper must not report the same EV as a 1-mark one.
+    assert qa.guess_ev() != _ev(options=5, mark_correct=3, mark_wrong=-1)
+
+
+def test_a_topic_naming_an_unknown_exam_is_refused(monkeypatch):
+    """MEASURED 2026-10-02: `Topic.exam_id`/`section_id` are required with NO
+    default, so a missing parent is a TypeError at import. This checks the other
+    half -- a parent that EXISTS but is wrong must refuse at build time, not render
+    into a section it does not belong to."""
+    # REPLACES a topic rather than adding one, so the year rows still sum to 28.
+    # Adding one tipped the sum to 25 and the closure check fired first -- which
+    # proves nothing about the exam layer. The neighbouring
+    # `test_self_check_rejects_duplicate_ids` records the same trap.
+    stolen = S.TOPICS[1].per_year
+    bad = S.Topic("fake", "cat", "qa", "Fake", stolen, True)
+    monkeypatch.setattr(S, "TOPICS", (S.TOPICS[0], bad, *S.TOPICS[2:]))
+    with pytest.raises(KeyError, match="not in SECTIONS"):
+        S.self_check()
+
+
+def test_a_section_whose_key_and_value_disagree_is_refused(monkeypatch):
+    """The join was a convention, not a check. MEASURED: rewriting
+    `SECTIONS["xat:qa_di"]` to carry `exam_id="cat"` made `section_of` return the CAT
+    spec for an XAT topic -- the key said xat, the value said cat, and only one of
+    them was read."""
+    wrong = dataclasses.replace(S.SECTIONS["xat:qa_di"], exam_id="cat")
+    monkeypatch.setitem(S.SECTIONS, "xat:qa_di", wrong)
+    with pytest.raises(ValueError, match="key and the value disagree"):
+        S.self_check()
 
 
 def test_excluded_topics_all_carry_a_reason():
@@ -373,11 +453,15 @@ def test_one_held_connection_does_not_block_the_next_request():
     import threading
     import urllib.request
 
+    from xat_practice.bundle import out_dir
     from xat_practice.cli import make_server
 
     port = _free_port()
-    httpd = make_server(Path(__file__).resolve().parent.parent
-                        / "out" / LESSONS[0].lesson_id, port)
+    # DERIVED, not `out/<lesson_id>` written out. MEASURED 2026-10-02: the flat
+    # path stopped existing when the exam layer nested the output, and this test
+    # pointed a server at a directory that was not there -- a test that passes
+    # while checking nothing is exactly what it exists to prevent.
+    httpd = make_server(out_dir(LESSONS[0].lesson_id), port)
     t = threading.Thread(target=httpd.serve_forever, daemon=True)
     t.start()
     held = socket.create_connection(("127.0.0.1", port))
@@ -425,3 +509,125 @@ def test_serve_refuses_to_start_without_an_index_html(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "no index.html" in err
     assert "xat-practice build" in err, "the error must say the command that fixes it"
+
+
+# ---------------------------------------------------------------------------
+# Part 1 is ONE pool. The blank penalty is counted across it, not per section.
+# ---------------------------------------------------------------------------
+# MEASURED 2026-10-02. `blank_penalty` and `blank_penalty_after` were on
+# `SectionSpec`, so the product implied EIGHT FREE BLANKS PER SECTION. XAT's rule
+# is "-0.10 for every unattempted question after the first eight", and Part 1 is one
+# pool of 75 questions across QA&DI, VA&LR and DM. A learner told otherwise would
+# skip 24 and lose about 1.6 marks: a false attempt strategy, which is the one thing
+# this product teaches.
+#
+# Both reviewers reading docs/LLD.md flagged it independently. This is the
+# falsifying input for the fix.
+
+XAT = S.EXAMS["xat"]
+PART_1 = S.PARTS["xat:part_1"]
+PART_2 = S.PARTS["xat:part_2"]
+
+
+def test_the_blank_penalty_counts_across_the_part_not_within_a_section():
+    """4 blanks in QA&DI + 3 in DM + 3 in VA&LR = 10 blank, so 2 are over the
+    allowance and cost 0.20 -- even though NO section has more than eight."""
+    qa, dm, valr = S.SECTIONS["xat:qa_di"], S.SECTIONS["xat:dm"], S.SECTIONS["xat:va_lr"]
+    blanks = 4 + 3 + 3
+    assert all(s.part_id == "part_1" for s in (qa, dm, valr)), (
+        "all three scored sections must be in the SAME part, or the allowance is "
+        "counted once per section and the learner is told they may skip 24"
+    )
+    assert PART_1.cost_of_blanks(blanks) == pytest.approx(-0.20)
+    # The wrong answer, spelled out, because it is what the code used to do.
+    per_section_wrong = (qa.blank_penalty_after if hasattr(qa, "blank_penalty_after")
+                         else 8) * 3
+    assert per_section_wrong == 24, (
+        "this is the number the section-level model told a learner: 24 free blanks"
+    )
+
+
+def test_eight_or_fewer_blanks_in_part_1_cost_nothing():
+    for blanks in (0, 1, 7, 8):
+        assert PART_1.cost_of_blanks(blanks) == 0.0, blanks
+    assert PART_1.cost_of_blanks(9) == pytest.approx(-0.10)
+    assert PART_1.cost_of_blanks(10) == pytest.approx(-0.20)
+
+
+def test_gk_blanks_never_draw_a_part_1_penalty():
+    """GK is a separate PART with no blank rule, and it is excluded from the
+    percentile, so its blanks cannot consume Part 1's allowance or add to its
+    penalty."""
+    assert PART_2.blank_penalty == 0.0
+    assert PART_2.blank_penalty_after == 0
+    assert PART_2.cost_of_blanks(20) == 0.0
+    assert PART_2.in_percentile is False
+
+
+def test_no_section_may_carry_the_parts_clock_or_blank_rule():
+    """The regression guard for the ORIGINAL mistake, in the shape that would
+    reintroduce it. If someone adds `minutes` or `blank_penalty` back to
+    `SectionSpec`, this fails."""
+    fields = set(S.SectionSpec.__dataclass_fields__)
+    for banned in ("minutes", "blank_penalty", "blank_penalty_after",
+                   "stratum", "in_percentile"):
+        assert banned not in fields, (
+            f"SectionSpec.{banned} is a PART-level fact (or, for `stratum`, a "
+            "distribution rather than a value). MEASURED 2026-10-02: "
+            "blank_penalty per section told a learner they could skip 24."
+        )
+
+
+def test_part_one_has_the_clock_and_no_section_does():
+    assert PART_1.minutes == 170
+    # XAT 2026 has NO sectional time limit, so no section may carry one.
+    for sid in XAT.sections():
+        assert not hasattr(S.SECTIONS[f"xat:{sid}"], "minutes"), sid
+
+
+def test_a_section_is_a_mix_of_strata_not_one_value():
+    """MEASURED 2026-10-02: `SectionSpec.stratum` was a single `Stratum`, and
+    QA&DI holds **37 QUANT and 3 LOGIC** subtopics. A single value is a lie that
+    either fails the 3 LOGIC items at `G10` or gets them relabelled."""
+    strata = S.SECTIONS["xat:qa_di"].strata()
+    assert strata[S.Stratum.QUANT] == 37
+    assert strata[S.Stratum.LOGIC] == 3, (
+        f"QA&DI's LOGIC subtopics moved or vanished: {strata}"
+    )
+    logic = sorted(s.id for s in S.SUBTOPICS if s.stratum is S.Stratum.LOGIC)
+    assert logic == ["ds:sufficiency-statements",
+                     "puzzle:routing-and-network-puzzles",
+                     "venn:venn-counting"], logic
+
+
+def test_the_parts_close_to_the_exam():
+    """28 + 26 + 21 = 75 and 75 + 20 = 95. Stated as arithmetic, because 'close' on
+    its own is ambiguous -- which is why invariant 5 was rewritten this way."""
+    p1 = [S.SECTIONS[f"xat:{s}"] for s in PART_1.sections]
+    p2 = [S.SECTIONS[f"xat:{s}"] for s in PART_2.sections]
+    assert sum(s.questions for s in p1) == PART_1.questions == 75
+    assert sum(s.questions for s in p2) == PART_2.questions == 20
+    assert PART_1.questions + PART_2.questions == XAT.total_questions == 95
+    assert sum(s.questions for s in p1) == XAT.counted_questions == 75
+
+
+def test_the_shape_records_what_it_was_verified_against():
+    """MEASURED 2026-10-02: it is October 2026, so the paper a learner actually sits
+    is most likely XAT 2027. `edition="2026"` silently asserted that next year's
+    paper has the same counts, marking and calculator policy."""
+    assert XAT.evidence in ("OFFICIAL", "MEASURED", "SECONDARY", "ASSUMPTION")
+    assert XAT.evidence == "OFFICIAL"
+    assert "2026" in XAT.verified_against
+    assert XAT.verified_against, (
+        "an OFFICIAL shape must name the document it came from"
+    )
+
+
+def test_a_section_asked_about_the_wrong_exam_refuses():
+    """Asking an XAT section whether it counts for a different exam is a bug, not a
+    question. It used to return the XAT answer regardless of what was asked."""
+    other = S.ExamSpec(exam_id="cat", name="CAT", edition="2026",
+                       total_questions=66, counted_questions=66,
+                       parts=())
+    with pytest.raises(ValueError, match="wrong"):
+        S.SECTIONS["xat:qa_di"].counts_for_percentile(other)

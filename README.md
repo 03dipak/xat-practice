@@ -13,7 +13,7 @@ consistently with that belief. So:
 | The key is **right** | `solver.py` **recomputes** it in exact rational/sympy arithmetic from the item's own derivation. Agreement is arithmetic; disagreement is a **refusal** (`G5`), never a repair. Zero LLM calls. |
 | The level is **right** | `derive_level` computes the tier from structure. Level is never *requested*. Requesting two levels from a model returned the identical stem on 4 of 6 items in measurement. |
 | The answer is not **leaked** | The bundle splits into two files. The page loads `paper.json` (stem, options, level) and fetches `answerkey.json` **inside `check()` only**. |
-| The distractors **teach** | Every distractor carries a distinct named misconception from `syllabus.SUBTOPICS` — 90 named traps. `G12` refuses a blank or duplicated one. |
+| The distractors **teach** | Every distractor carries a distinct named misconception from `syllabus.SUBTOPICS` — 104 named traps. `G12` refuses a blank or duplicated one. |
 
 **The honest limit.** The guarantee is per stratum. `QUANT` keys are *computed*.
 `LOGIC` keys are *delegated* to an unbuilt enumerator, so they are labelled
@@ -242,7 +242,7 @@ rule given a non-paper is the defect behind D12 and D23, and it is how a hard ru
 once got deleted from Lesson 1. See D26.
 
 **`file://` will not work.** MEASURED 2026-10-02: opening
-`out/lesson-01-simple-interest/index.html` directly renders **"The question could
+`out/xat/qa_di/lesson-01-simple-interest/index.html` directly renders **"The question could
 not be loaded"**, because `file://` blocks `fetch()` of a sibling JSON. That is the
 commit barrier working — but it means `serve` is mandatory.
 
@@ -306,6 +306,7 @@ All four, not three:
 ```bash
 uv run ruff check src tests tools
 uv run mypy src
+uv run python -c "import xat_practice.cli"
 uv run pytest -q --strict-markers --cov
 uv run coverage report --include="src/xat_practice/*.py" \
     --fail-under=95 --precision=2

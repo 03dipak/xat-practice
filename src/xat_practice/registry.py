@@ -35,6 +35,7 @@ from dataclasses import dataclass
 
 from . import lesson1, lesson2
 from .items import Item
+from .syllabus import TOPICS, Topic
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +51,46 @@ class Lesson:
     items: tuple[Item, ...]
     solutions: Mapping[str, tuple[str, ...]]
     teach: Mapping[str, Mapping[str, object]]
+
+    @property
+    def topic_id(self) -> str:
+        """The topic this lesson's subtopic belongs to."""
+        return self.subtopic_id.split(":", 1)[0]
+
+    @property
+    def exam_id(self) -> str:
+        """The exam, DERIVED from the subtopic's topic.
+
+        A property, not a field. MEASURED 2026-10-02: `Topic` now carries
+        `exam_id`/`section_id`, so a lesson could also have stored its own -- and
+        then a lesson could disagree with its own subtopic about which exam it is
+        in, with nothing to notice. Two homes for one fact is the D12 shape; the
+        registry derives.
+        """
+        return self._topic().exam_id
+
+    @property
+    def section_id(self) -> str:
+        """The section, derived. See `exam_id` for why this is not a field."""
+        return self._topic().section_id
+
+    @property
+    def topic_label(self) -> str:
+        for t in TOPICS:
+            if t.id == self.topic_id:
+                return t.name
+        return self.topic_id
+
+    def _topic(self) -> Topic:
+        topic_id = self.topic_id
+        for t in TOPICS:
+            if t.id == topic_id:
+                return t
+        raise KeyError(
+            f"{self.lesson_id}: subtopic {self.subtopic_id!r} names topic "
+            f"{topic_id!r}, which is not in the syllabus. A lesson whose topic does "
+            "not exist cannot be filed under a section."
+        )
 
     @property
     def subtopics(self) -> set[str]:
